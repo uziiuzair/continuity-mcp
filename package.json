@@ -1,0 +1,20 @@
+{
+  "name": "continuity-mcp",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "description": "Alpha. Coordination for parallel Claude Code sessions — shared presence, file-activity awareness, decisions, task claims, and handoffs. Local (SQLite) or team (Cloudflare Worker + Neon) flavors.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -r --workspace-concurrency=1 run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

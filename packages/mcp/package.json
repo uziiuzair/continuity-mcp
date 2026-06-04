@@ -1,0 +1,30 @@
+{
+  "name": "@continuity/mcp",
+  "version": "0.1.0-alpha.1",
+  "description": "Continuity MCP server — coordination tools for parallel Claude Code sessions, with local (SQLite) and remote (HTTP) backends.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "continuity-mcp": "./bin/cli.mjs"
+  },
+  "files": ["dist", "bin"],
+  "scripts": {
+    "build": "node build.mjs production",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "node build.mjs production"
+  },
+  "dependencies": {
+    "@continuity/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "esbuild": "^0.24.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

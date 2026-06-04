@@ -1,0 +1,31 @@
+name = "continuity-server"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+[observability.logs]
+enabled = true
+
+# Secrets (set via `wrangler secret put`, or .dev.vars for local dev):
+#   DATABASE_URL          Neon pooler connection string        (required)
+#   API_KEY_HMAC_SECRET   server-side secret for hashing API keys (required)
+#
+# Team-flavor extras — ALL OPTIONAL. The Worker deploys with only the two
+# required secrets above; each feature degrades gracefully when its secret is
+# absent (routes return { error: "not_configured" } or a permissive default):
+#   GITHUB_APP_ID               GitHub App id              (GitHub Projects v2)
+#   GITHUB_APP_PRIVATE_KEY      PKCS#8 PEM private key      (GitHub Projects v2)
+#   GITHUB_APP_INSTALLATION_ID  installation id            (GitHub Projects v2)
+#   ANTHROPIC_API_KEY           Claude Haiku key           (plan check)
+#   SLACK_WEBHOOK_URL           Slack incoming webhook      (escalation + digest)
+#   CONTINUITY_REPOS            "owner/repo,owner/repo" list the sync cron scans
+#                               (optional; falls back to repos with live claims)
+
+[triggers]
+# "* * * * *"  every minute: the janitor (expire idle/gone sessions, prune file
+#              activity, auto-release stale claims) + GitHub Projects sync
+#              (no-op when GitHub App is unconfigured).
+# "0 9 * * 1"  Mondays 09:00 UTC: weekly digest (Slack post no-ops without
+#              SLACK_WEBHOOK_URL).
+crons = ["* * * * *", "0 9 * * 1"]

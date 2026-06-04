@@ -1,0 +1,30 @@
+{
+  "name": "continuity",
+  "version": "0.1.0-alpha.1",
+  "description": "[Alpha] Shared presence, file-activity awareness, decisions, task claims & handoffs for parallel Claude Code sessions. Works locally (SQLite, zero-config) or against a team server.",
+  "author": {
+    "name": "Continuity contributors"
+  },
+  "userConfig": {
+    "apiUrl": {
+      "type": "string",
+      "title": "Team API URL (optional)",
+      "description": "Base URL of a Continuity team server (the Cloudflare Worker). Leave blank to run locally against a SQLite file — no server needed."
+    },
+    "apiKey": {
+      "type": "string",
+      "title": "Team API key (optional)",
+      "description": "Your API key for the team server. Required only for team mode; leave blank for local mode."
+    },
+    "repoAllowlist": {
+      "type": "string",
+      "title": "Allowed git remotes (optional, comma-separated host/owner/repo)",
+      "description": "Restrict Continuity to specific repos. Leave blank to activate in any git repo."
+    },
+    "dbPath": {
+      "type": "string",
+      "title": "Local database path (optional)",
+      "description": "Where the local SQLite file lives. Defaults to ~/.continuity/continuity.db. Ignored in team mode."
+    }
+  }
+}

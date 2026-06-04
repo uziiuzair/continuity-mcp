@@ -1,0 +1,9 @@
+# Copy to .dev.vars for `wrangler dev`. In production set these via
+# `wrangler secret put DATABASE_URL` and `wrangler secret put API_KEY_HMAC_SECRET`.
+
+# Neon connection string — use the POOLED endpoint (host contains "-pooler").
+DATABASE_URL="postgres://USER:PASSWORD@HOST-pooler.REGION.aws.neon.tech/DB?sslmode=require"
+
+# Any high-entropy random string. Keep it stable: changing it invalidates every
+# issued API key. Generate with e.g. `openssl rand -hex 32`.
+API_KEY_HMAC_SECRET="replace-with-openssl-rand-hex-32"

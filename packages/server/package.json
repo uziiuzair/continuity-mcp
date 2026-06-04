@@ -1,0 +1,29 @@
+{
+  "name": "@continuity/server",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "description": "Continuity team-flavor backend — a Cloudflare Worker (Hono + Drizzle) over Neon Postgres.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8788",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "user:create": "tsx scripts/create-user.ts"
+  },
+  "dependencies": {
+    "@continuity/shared": "workspace:*",
+    "@neondatabase/serverless": "^1.0.2",
+    "drizzle-orm": "^0.44.0",
+    "hono": "^4.6.20"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250115.0",
+    "@types/node": "^22.10.0",
+    "drizzle-kit": "^0.30.0",
+    "tsx": "^4.19.0",
+    "wrangler": "^4.0.0"
+  }
+}

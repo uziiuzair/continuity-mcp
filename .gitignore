@@ -1,0 +1,35 @@
+/.claude
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# The plugin payload (plugin/mcp/index.mjs) IS committed so the plugin installs
+# from the marketplace without a build step. It's a pure-JS bundle (local backend
+# uses Node's built-in node:sqlite — no native deps), so it's cross-platform and
+# needs no node_modules. Regenerate with `pnpm --filter @continuity/mcp build`.
+
+# Local runtime data
+*.db
+*.db-shm
+*.db-wal
+.continuity/
+
+# Env / secrets
+.dev.vars
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Cloudflare / wrangler
+.wrangler/

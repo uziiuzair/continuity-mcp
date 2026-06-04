@@ -1,0 +1,14 @@
+{
+  "name": "continuity",
+  "owner": { "name": "Continuity contributors" },
+  "metadata": {
+    "description": "Coordination for parallel Claude Code sessions — local (SQLite) or team (Cloudflare Worker + Neon)."
+  },
+  "plugins": [
+    {
+      "name": "continuity",
+      "source": "./plugin",
+      "description": "[Alpha] Shared presence, file-activity awareness, decisions, task claims & handoffs for parallel Claude Code sessions. Works locally (SQLite, zero-config) or against a team server."
+    }
+  ]
+}
