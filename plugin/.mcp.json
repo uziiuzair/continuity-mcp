@@ -2,7 +2,7 @@
   "mcpServers": {
     "continuity": {
       "command": "node",
-      "args": ["--experimental-sqlite", "${CLAUDE_PLUGIN_ROOT}/mcp/index.mjs"],
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/launch.mjs"],
       "env": {
         "NODE_NO_WARNINGS": "1",
         "CONTINUITY_API_URL": "${user_config.apiUrl}",

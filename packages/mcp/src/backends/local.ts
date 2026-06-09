@@ -298,11 +298,18 @@ export class LocalBackend implements ContinuityBackend {
         return { conflict: true, existing: toDecision(existingActive as never) }
       }
       if (args.supersedes) {
-        this.run("UPDATE decisions SET status='superseded' WHERE id=?", args.supersedes)
+        // Key-scoped on purpose: a stale or foreign `supersedes` id must not
+        // retire an unrelated decision. If it matches nothing, the insert below
+        // hits decisions_active_key_uq and we report the conflict.
+        this.run(
+          "UPDATE decisions SET status='superseded' WHERE id=? AND decision_key=?",
+          args.supersedes,
+          args.decision_key,
+        )
       }
       const id = randomUUID()
-      this.run(
-        "INSERT INTO decisions (id, decision_key, content, decision_type, project_scope, author_agent_session_id, status, supersedes, created_at) VALUES (?,?,?,?,?,?,'active',?,?)",
+      const changes = this.run(
+        "INSERT INTO decisions (id, decision_key, content, decision_type, project_scope, author_agent_session_id, status, supersedes, created_at) VALUES (?,?,?,?,?,?,'active',?,?) ON CONFLICT DO NOTHING",
         id,
         args.decision_key,
         args.content,
@@ -312,6 +319,14 @@ export class LocalBackend implements ContinuityBackend {
         args.supersedes ?? null,
         now,
       )
+      if (changes === 0) {
+        const blocking = this.get(
+          `SELECT ${DECISION_COLS} FROM decisions WHERE decision_key=? AND status='active' ORDER BY created_at DESC LIMIT 1`,
+          args.decision_key,
+        )
+        if (!blocking) throw new Error("decision_write_conflict")
+        return { conflict: true, existing: toDecision(blocking as never) }
+      }
       const row = this.get(`SELECT ${DECISION_COLS} FROM decisions WHERE id=?`, id)
       return { conflict: false, result: toDecision(row as never) }
     })
@@ -362,8 +377,8 @@ export class LocalBackend implements ContinuityBackend {
       if (!old) throw new Error("not_found")
       this.run("UPDATE decisions SET status='superseded' WHERE id=?", old.id)
       const id = randomUUID()
-      this.run(
-        "INSERT INTO decisions (id, decision_key, content, decision_type, project_scope, author_agent_session_id, status, supersedes, created_at) VALUES (?,?,?,?,?,?,'active',?,?)",
+      const changes = this.run(
+        "INSERT INTO decisions (id, decision_key, content, decision_type, project_scope, author_agent_session_id, status, supersedes, created_at) VALUES (?,?,?,?,?,?,'active',?,?) ON CONFLICT DO NOTHING",
         id,
         old.decisionKey,
         args.new_content,
@@ -373,6 +388,9 @@ export class LocalBackend implements ContinuityBackend {
         old.id,
         now,
       )
+      // Blocked by decisions_active_key_uq: `existing_id` wasn't the active
+      // decision for its key, so superseding it can't replace the real one.
+      if (changes === 0) throw new Error("decision_conflict: another active decision exists for this key")
       return toDecision(this.get(`SELECT ${DECISION_COLS} FROM decisions WHERE id=?`, id) as never)
     })
     this.audit("decision.supersede", args.author_agent_session_id ?? null, {

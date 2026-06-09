@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
@@ -28,7 +28,11 @@ export function readState(cwdHash) {
 export function writeState(cwdHash, state) {
   const path = stateFilePath(cwdHash)
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(state, null, 2))
+  // Atomic write (tmp + rename) — mirror of state.ts; two processes write this
+  // file, so a reader must never observe a torn JSON file.
+  const tmp = `${path}.${process.pid}.tmp`
+  writeFileSync(tmp, JSON.stringify(state, null, 2))
+  renameSync(tmp, path)
 }
 
 export function clearState(cwdHash) {

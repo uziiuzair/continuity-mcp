@@ -14,7 +14,8 @@
     "apiKey": {
       "type": "string",
       "title": "Team API key (optional)",
-      "description": "Your API key for the team server. Required only for team mode; leave blank for local mode."
+      "description": "Your API key for the team server. Required only for team mode; leave blank for local mode.",
+      "sensitive": true
     },
     "repoAllowlist": {
       "type": "string",

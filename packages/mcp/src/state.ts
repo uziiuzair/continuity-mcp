@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
@@ -38,7 +38,11 @@ export function readState(cwdHash: string): SessionState | null {
 export function writeState(cwdHash: string, state: SessionState): void {
   const path = stateFilePath(cwdHash)
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(state, null, 2))
+  // Atomic write (tmp + rename): the file has two writers (the PostToolUse hook
+  // and the long-lived shim), so a reader must never observe a torn JSON file.
+  const tmp = `${path}.${process.pid}.tmp`
+  writeFileSync(tmp, JSON.stringify(state, null, 2))
+  renameSync(tmp, path)
 }
 
 export function clearState(cwdHash: string): void {

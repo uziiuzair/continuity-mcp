@@ -127,6 +127,12 @@ export const decisions = pgTable(
     index("decisions_key_idx").on(t.decisionKey),
     index("decisions_status_idx").on(t.status),
     index("decisions_created_at_idx").on(t.createdAt),
+    // At most one *active* decision per key — the "conflicts are loud" promise
+    // as a DB-level guarantee. Write paths treat a violation as a 409 conflict,
+    // which also closes the select-then-insert race over neon-http.
+    uniqueIndex("decisions_active_key_uq")
+      .on(t.decisionKey)
+      .where(sql`status = 'active'`),
   ],
 )
 

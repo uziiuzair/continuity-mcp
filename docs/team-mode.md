@@ -81,7 +81,7 @@ Each teammate installs the `continuity` plugin and sets two config values:
 With both present, the plugin selects **team** mode automatically and all coordination
 flows through the Worker. (Leaving them blank falls back to local mode.) The optional
 `repoAllowlist` config scopes Continuity to specific repos — see
-[`examples/arlo.md`](./examples/arlo.md).
+[`examples/repo-allowlist.md`](./examples/repo-allowlist.md).
 
 ## Team-only extras
 

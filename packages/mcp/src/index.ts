@@ -1,9 +1,11 @@
 import { homedir } from "node:os"
 import { basename, join } from "node:path"
+import pkg from "../package.json" with { type: "json" }
 import type { ContinuityBackend, FileTool } from "@continuity/shared"
 import { FILE_TOOLS } from "@continuity/shared"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
+import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
 import { openLocalDb } from "./backends/db.js"
 import { LocalBackend } from "./backends/local.js"
 import { RemoteBackend } from "./backends/remote.js"
@@ -152,7 +154,7 @@ async function runAudit(rt: Runtime, eventType: string): Promise<void> {
 async function runServer(rt: Runtime): Promise<void> {
   const { repo, backend, mode, agentLabel } = rt
   const { cwdHash, repoFullName } = repo
-  const server = new McpServer({ name: "continuity", version: "0.1.0" })
+  const server = new McpServer({ name: "continuity", version: pkg.version })
 
   // Adopt any session id the SessionStart hook wrote, then check in (idempotent
   // on cwd) so the hook and the shim converge on one session row.
@@ -215,16 +217,32 @@ async function runServer(rt: Runtime): Promise<void> {
     if (files.length === 0) return
     try {
       await backend.fileActivity({ session_id: sessionId, repo_full_name: repoFullName, files })
-      writeState(cwdHash, { ...state, pending_files: [], last_file_report_at: Date.now() })
+      // The PostToolUse hook may have appended paths while the flush was in
+      // flight. Re-read and subtract only what we actually flushed, so a
+      // concurrent append is never silently dropped.
+      const latest = readState(cwdHash) ?? state
+      const flushed = new Set(files.map((f) => f.path))
+      writeState(cwdHash, {
+        ...latest,
+        pending_files: (latest.pending_files ?? []).filter((f) => !flushed.has(f.path)),
+        last_file_report_at: Date.now(),
+      })
     } catch {
       // leave pending in place; next tick retries
     }
   }
 
+  // Registering a signal handler removes Node's default terminate-on-signal
+  // behavior, so we must exit ourselves once the best-effort checkout settles
+  // (capped at 2s so a hung backend can't keep the process alive).
   const shutdown = (): void => {
     clearInterval(heartbeat)
+    const exit = (): void => process.exit(0)
+    setTimeout(exit, 2_000)
     if (sessionId) {
-      void backend.checkout({ session_id: sessionId, reason: "shim_shutdown" }).catch(() => {})
+      void backend.checkout({ session_id: sessionId, reason: "shim_shutdown" }).catch(() => {}).finally(exit)
+    } else {
+      exit()
     }
   }
   process.on("SIGTERM", shutdown)
@@ -249,8 +267,13 @@ async function main(): Promise<void> {
   if (!rt) {
     // Inert: not an activated git repo. The long-lived server still completes the
     // MCP handshake so Claude Code is happy; one-shot subcommands just exit.
+    // Declare the tools capability with an empty list (instead of leaving
+    // tools/list unhandled → -32601) so strict MCP clients see "no tools", not
+    // an error.
     if (!isSubcommand) {
-      const server = new McpServer({ name: "continuity", version: "0.1.0" })
+      const server = new McpServer({ name: "continuity", version: pkg.version })
+      server.server.registerCapabilities({ tools: {} })
+      server.server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: [] }))
       await server.connect(new StdioServerTransport())
     }
     return

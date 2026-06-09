@@ -213,6 +213,18 @@ CREATE TABLE IF NOT EXISTS decisions (
 CREATE INDEX IF NOT EXISTS decisions_key_idx ON decisions (decision_key);
 CREATE INDEX IF NOT EXISTS decisions_status_idx ON decisions (status);
 CREATE INDEX IF NOT EXISTS decisions_created_at_idx ON decisions (created_at);
+-- Repair DBs created before the unique index existed: keep only the newest
+-- active decision per key, then enforce uniqueness. Makes "conflicts are loud"
+-- a DB-level guarantee instead of an application-level convention.
+UPDATE decisions SET status='superseded'
+  WHERE status='active' AND EXISTS (
+    SELECT 1 FROM decisions d2
+    WHERE d2.decision_key = decisions.decision_key AND d2.status='active'
+      AND (d2.created_at > decisions.created_at
+        OR (d2.created_at = decisions.created_at AND d2.id > decisions.id))
+  );
+CREATE UNIQUE INDEX IF NOT EXISTS decisions_active_key_uq
+  ON decisions (decision_key) WHERE status = 'active';
 
 CREATE TABLE IF NOT EXISTS task_claims (
   id TEXT PRIMARY KEY,

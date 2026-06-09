@@ -14,17 +14,15 @@
     "test": "vitest run",
     "prepublishOnly": "node build.mjs production"
   },
-  "dependencies": {
+  "devDependencies": {
     "@continuity/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "zod": "^3.25.0"
-  },
-  "devDependencies": {
     "@types/node": "^22.13.0",
     "esbuild": "^0.24.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "zod": "^3.25.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.5"
   }
 }

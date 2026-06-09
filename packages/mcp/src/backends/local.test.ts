@@ -129,6 +129,43 @@ describe("decisions", () => {
     const current = await backend.decisionGetByKey({ key: "x" })
     expect(current.decision?.content).toBe("2")
   })
+
+  it("a stale supersedes id conflicts instead of creating a duplicate active decision", async () => {
+    const a = await backend.decisionWrite({ decision_key: "db", content: "v1" })
+    if (a.conflict) throw new Error("unexpected conflict")
+    const b = await backend.decisionWrite({ decision_key: "db", content: "v2", supersedes: a.result.id })
+    expect(b.conflict).toBe(false)
+    // a.result.id is now superseded — reusing it must NOT yield a second active row.
+    const c = await backend.decisionWrite({ decision_key: "db", content: "v3", supersedes: a.result.id })
+    expect(c.conflict).toBe(true)
+    if (c.conflict) expect(c.existing.content).toBe("v2")
+    const { decisions: active } = await backend.decisionRecent({})
+    expect(active.filter((d) => d.decision_key === "db")).toHaveLength(1)
+  })
+
+  it("a foreign supersedes id cannot retire an unrelated decision", async () => {
+    const other = await backend.decisionWrite({ decision_key: "ui", content: "React" })
+    if (other.conflict) throw new Error("unexpected conflict")
+    const a = await backend.decisionWrite({ decision_key: "db", content: "Postgres" })
+    expect(a.conflict).toBe(false)
+    // Supersede targeting a different key's decision: must conflict, and the
+    // unrelated decision must survive untouched.
+    const b = await backend.decisionWrite({ decision_key: "db", content: "MySQL", supersedes: other.result.id })
+    expect(b.conflict).toBe(true)
+    const ui = await backend.decisionGetByKey({ key: "ui" })
+    expect(ui.decision?.content).toBe("React")
+  })
+
+  it("decisionSupersede of a non-active decision throws instead of duplicating the key", async () => {
+    const a = await backend.decisionWrite({ decision_key: "db", content: "v1" })
+    if (a.conflict) throw new Error("unexpected conflict")
+    await backend.decisionSupersede({ existing_id: a.result.id, new_content: "v2" })
+    await expect(
+      backend.decisionSupersede({ existing_id: a.result.id, new_content: "v3" }),
+    ).rejects.toThrow(/decision_conflict/)
+    const current = await backend.decisionGetByKey({ key: "db" })
+    expect(current.decision?.content).toBe("v2")
+  })
 })
 
 describe("handoffs", () => {

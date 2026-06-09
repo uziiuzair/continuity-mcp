@@ -13,17 +13,13 @@ importers:
         version: 5.9.3
 
   packages/mcp:
-    dependencies:
+    devDependencies:
       '@continuity/shared':
         specifier: workspace:*
         version: link:../shared
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@3.25.76)
-      zod:
-        specifier: ^3.25.0
-        version: 3.25.76
-    devDependencies:
       '@types/node':
         specifier: ^22.13.0
         version: 22.19.19
@@ -33,6 +29,9 @@ importers:
       vitest:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.19.19)
+      zod:
+        specifier: ^3.25.0
+        version: 3.25.76
 
   packages/server:
     dependencies:

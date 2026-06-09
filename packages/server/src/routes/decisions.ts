@@ -7,6 +7,14 @@ import type { AppEnv } from "../types.js"
 const { decisions } = pgSchema
 const TYPES = ["architecture", "tooling", "process", "scope", "other"] as const
 
+// Unique violation on decisions_active_key_uq — a concurrent writer (or a stale
+// `supersedes` id) means another active decision already holds this key.
+function isActiveKeyConflict(err: unknown): boolean {
+  const e = err as { code?: string; message?: string }
+  const text = `${e?.code ?? ""} ${e?.message ?? ""}`
+  return text.includes("23505") || text.includes("decisions_active_key_uq")
+}
+
 export const decisionRoutes = new Hono<AppEnv>()
 
 // POST /decisions/write — 409 with the conflicting decision if an active one
@@ -58,15 +66,35 @@ decisionRoutes.post("/write", async (c) => {
   // db.batch([...]) runs all statements in a single atomic transaction over the
   // HTTP wire. When superseding, mark the old row + insert the replacement in
   // one batch so we never leave a decision superseded with no active successor.
+  // The supersede update is key-scoped so a stale or foreign id can't retire an
+  // unrelated decision; decisions_active_key_uq then rejects the insert and the
+  // catch below reports the real conflict instead of overwriting.
   let inserted: Awaited<typeof insert>
-  if (supersedes) {
-    const [, insertRes] = await c.var.db.batch([
-      c.var.db.update(decisions).set({ status: "superseded" }).where(eq(decisions.id, supersedes)),
-      insert,
-    ])
-    inserted = insertRes
-  } else {
-    inserted = await insert
+  try {
+    if (supersedes) {
+      const [, insertRes] = await c.var.db.batch([
+        c.var.db
+          .update(decisions)
+          .set({ status: "superseded" })
+          .where(and(eq(decisions.id, supersedes), eq(decisions.decisionKey, body.decision_key))),
+        insert,
+      ])
+      inserted = insertRes
+    } else {
+      inserted = await insert
+    }
+  } catch (err) {
+    if (!isActiveKeyConflict(err)) throw err
+    const blocking = await c.var.db
+      .select()
+      .from(decisions)
+      .where(and(eq(decisions.decisionKey, body.decision_key), eq(decisions.status, "active")))
+      .orderBy(desc(decisions.createdAt))
+      .limit(1)
+    return c.json(
+      { error: "decision_conflict", existing: blocking[0] ? toDecision(blocking[0]) : null },
+      409,
+    )
   }
   await writeAudit(c.var.db, supersedes ? "decision.supersede" : "decision.write", c.var.userId, authorSession, {
     decision_key: body.decision_key,
@@ -130,22 +158,39 @@ decisionRoutes.post("/supersede", async (c) => {
   // statements atomically over a single HTTP round-trip. Supersede the old row
   // and insert the replacement together so a failure can't strand the old
   // decision as superseded with no active successor.
-  const [, inserted] = await c.var.db.batch([
-    c.var.db.update(decisions).set({ status: "superseded" }).where(eq(decisions.id, old.id)),
-    c.var.db
-      .insert(decisions)
-      .values({
-        decisionKey: old.decisionKey,
-        content: body.new_content,
-        decisionType: old.decisionType,
-        projectScope: old.projectScope,
-        authorUserId: c.var.userId,
-        authorAgentSessionId: authorSession,
-        status: "active",
-        supersedes: old.id,
-      })
-      .returning(),
-  ])
+  let inserted: (typeof old)[]
+  try {
+    ;[, inserted] = await c.var.db.batch([
+      c.var.db.update(decisions).set({ status: "superseded" }).where(eq(decisions.id, old.id)),
+      c.var.db
+        .insert(decisions)
+        .values({
+          decisionKey: old.decisionKey,
+          content: body.new_content,
+          decisionType: old.decisionType,
+          projectScope: old.projectScope,
+          authorUserId: c.var.userId,
+          authorAgentSessionId: authorSession,
+          status: "active",
+          supersedes: old.id,
+        })
+        .returning(),
+    ])
+  } catch (err) {
+    if (!isActiveKeyConflict(err)) throw err
+    // existing_id wasn't the active decision for its key — superseding it can't
+    // replace the real one. Report the decision actually holding the key.
+    const blocking = await c.var.db
+      .select()
+      .from(decisions)
+      .where(and(eq(decisions.decisionKey, old.decisionKey), eq(decisions.status, "active")))
+      .orderBy(desc(decisions.createdAt))
+      .limit(1)
+    return c.json(
+      { error: "decision_conflict", existing: blocking[0] ? toDecision(blocking[0]) : null },
+      409,
+    )
+  }
   await writeAudit(c.var.db, "decision.supersede", c.var.userId, authorSession, {
     decision_key: old.decisionKey,
     existing_id: old.id,

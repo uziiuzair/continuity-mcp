@@ -11,6 +11,50 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Fixed
+
+- **Old Node no longer fails silently.** A new version-aware launcher
+  (`plugin/mcp/launch.mjs`) prints a clear error on Node < 22.5 instead of dying
+  on `--experimental-sqlite` with no diagnostics, and the `SessionStart` hook
+  injects a visible "plugin inactive" warning into the session. On Node 24+ the
+  bundle now runs in-process (no flag, no respawn).
+- **File activity can no longer be silently dropped.** The heartbeat flush
+  re-reads the session state file and subtracts only the paths it actually
+  flushed, so edits recorded by the `PostToolUse` hook during a flush survive.
+  All state-file writes are now atomic (tmp + rename), eliminating torn reads
+  between the hook and the long-lived shim.
+- **Duplicate active decisions are now impossible at the DB level.** Both
+  schemas gained a partial unique index (`decisions_active_key_uq`); opening an
+  existing local DB (or applying migration `0001`) repairs prior duplicates by
+  keeping the newest active row per key. A stale or foreign `supersedes` id now
+  returns a loud conflict instead of quietly creating a second active decision —
+  closing the select-then-insert race in the team flavor.
+- `SIGTERM`/`SIGINT` now actually terminate the MCP server (best-effort checkout,
+  then exit, capped at 2s) instead of leaving the process alive.
+- The MCP server reports its real package version instead of a hardcoded `0.1.0`.
+- File paths are canonicalized (symlinks resolved) before repo-relativization,
+  so edits reaching the hook through a symlinked path (e.g. macOS `/tmp`) are
+  stored repo-relative instead of absolute.
+- The inert server (outside a git repo) now answers `tools/list` with an empty
+  list instead of a `-32601 Method not found` JSON-RPC error.
+
+### Added
+
+- **CI** (GitHub Actions): typecheck + tests on Node 22 and 24, plus a
+  bundle-sync job that fails if the committed plugin payload drifts from source.
+- The local-backend test suite now runs on Node 22.x (vitest workers get
+  `--experimental-sqlite`), and new tests cover the decision-conflict
+  guarantees.
+
+### Changed
+
+- The plugin's `apiKey` config is marked `sensitive` — stored in the system
+  keychain instead of plaintext `settings.json`.
+- Documented Node floor corrected to **≥ 22.5** (`node:sqlite` shipped in 22.5).
+- The per-prompt focus-sync hook's shim timeout was reduced to stay under the
+  hook's own budget.
+- `docs/examples/arlo.md` renamed to `docs/examples/repo-allowlist.md`.
+
 ## [0.1.0-alpha.1] — Alpha
 
 Initial public alpha: the first open-source release of Continuity, coordination for

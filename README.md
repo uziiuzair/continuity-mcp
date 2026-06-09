@@ -44,27 +44,35 @@ In Claude Code, add this repo as a plugin marketplace and install the plugin:
 ```
 
 With no configuration it runs in **local** mode (SQLite, zero-config). For
-**team** mode, set the plugin's `apiUrl` + `apiKey` to your deployed Worker.
+**team** mode, set the plugin's `apiUrl` + `apiKey` to your deployed Worker —
+Claude Code prompts for these when you enable the plugin, and you can change
+them later via `/plugin` → continuity → Configure. The API key is stored in
+your system keychain, not in `settings.json`.
 
-> **Requires Node ≥ 22.** The local flavor uses Node's built-in `node:sqlite`
-> (no native dependencies — the plugin bundle is pure JS and cross-platform). The
-> launcher passes `--experimental-sqlite`, which is required on Node 22.x–23.x and
-> a no-op on Node 24+.
+> **Requires Node ≥ 22.5.** The local flavor uses Node's built-in `node:sqlite`
+> (no native dependencies — the plugin bundle is pure JS and cross-platform),
+> which shipped in Node 22.5. The launcher adds `--experimental-sqlite` on Node
+> 22.x–23.x (unflagged on 24+) and prints a clear error on older Nodes instead
+> of failing silently.
+
+> **Permission rules:** in `allowedTools` / `--allowedTools` / hook matchers, the
+> plugin's tools are namespaced as `mcp__plugin_continuity_continuity__<tool>`
+> (e.g. `mcp__plugin_continuity_continuity__decision_write`), not bare tool names.
 
 ## Documentation
 
 - [Architecture](./docs/architecture.md) — the two flavors, the `ContinuityBackend` seam, the data model
 - [Local mode](./docs/local-mode.md) — zero-config single-machine setup
 - [Team mode](./docs/team-mode.md) — deploying the Cloudflare Worker + Neon
-- [Example team setup](./docs/examples/arlo.md) — scoping Continuity to specific repos
+- [Example team setup](./docs/examples/repo-allowlist.md) — scoping Continuity to specific repos
 
 ## Status
 
 🚧 Early development. See [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) for the
 architecture and build phases.
 
-**Node version:** **Node ≥ 22** for both flavors — the local flavor uses
-`node:sqlite` (Node 22+), and the team flavor's Wrangler 4 tooling also needs Node 22+.
+**Node version:** **Node ≥ 22.5** for both flavors — the local flavor uses
+`node:sqlite` (Node 22.5+), and the team flavor's Wrangler 4 tooling also needs Node 22+.
 
 ## Repo layout
 

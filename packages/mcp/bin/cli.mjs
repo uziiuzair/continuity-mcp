@@ -9,7 +9,16 @@ import { fileURLToPath } from "node:url"
 
 const bundle = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "index.mjs")
 
-if (!process.execArgv.includes("--experimental-sqlite") && !process.env.CONTINUITY_REEXEC) {
+const [major, minor] = process.versions.node.split(".").map(Number)
+if (major < 22 || (major === 22 && minor < 5)) {
+  console.error(
+    `[continuity-mcp] Node ${process.versions.node} is too old — Continuity needs Node >= 22.5 ` +
+      `(it uses the built-in node:sqlite module). Install Node 22.5+ from https://nodejs.org.`,
+  )
+  process.exit(1)
+}
+
+if (major <= 23 && !process.execArgv.includes("--experimental-sqlite") && !process.env.CONTINUITY_REEXEC) {
   const r = spawnSync(process.execPath, ["--experimental-sqlite", bundle, ...process.argv.slice(2)], {
     stdio: "inherit",
     env: { ...process.env, CONTINUITY_REEXEC: "1", NODE_NO_WARNINGS: "1" },

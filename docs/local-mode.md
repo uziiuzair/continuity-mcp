@@ -15,8 +15,10 @@ bundled shim (`plugin/mcp/index.mjs`) on session start.
 > The bundled shim uses Node's built-in `node:sqlite` — **no native dependencies**,
 > so the committed bundle is pure JS and works on any OS/arch.
 
-Requires **Node ≥ 22** (`node:sqlite`). The launcher passes `--experimental-sqlite`,
-which is required on Node 22.x–23.x and a no-op on Node 24+.
+Requires **Node ≥ 22.5** (`node:sqlite` shipped in 22.5). The launcher adds
+`--experimental-sqlite` on Node 22.x–23.x (unflagged on 24+); on older Nodes it
+prints a clear error — and the SessionStart hook surfaces a warning in the
+session — instead of failing silently.
 
 ## Where the database lives
 
@@ -89,5 +91,5 @@ session naturally reads as gone without anyone cleaning up.
 Continuity installs user-wide but stays **inert** outside git repos. With the default
 (empty) `repoAllowlist`, it activates in **any git repo** you run Claude Code in — and
 does nothing in a non-git directory. To scope it to specific repos instead, set
-`repoAllowlist` (see [`examples/arlo.md`](./examples/arlo.md)); that's primarily a team
+`repoAllowlist` (see [`examples/repo-allowlist.md`](./examples/repo-allowlist.md)); that's primarily a team
 concern.
