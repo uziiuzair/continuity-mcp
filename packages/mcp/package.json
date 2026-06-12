@@ -18,7 +18,7 @@
     "@continuity/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^22.13.0",
-    "esbuild": "^0.24.0",
+    "esbuild": "^0.28.1",
     "vitest": "^2.1.0",
     "zod": "^3.25.0"
   },
