@@ -13,6 +13,8 @@
 
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
 
+import { MESSAGE_KINDS, MESSAGE_STATUSES } from "./constants.js"
+
 export const agentSessions = sqliteTable(
   "agent_sessions",
   {
@@ -141,12 +143,39 @@ export const handoffs = sqliteTable(
   ],
 )
 
+export const messages = sqliteTable(
+  "messages",
+  {
+    id: text("id").primaryKey(),
+    fromAgentSessionId: text("from_agent_session_id").notNull(),
+    toAgentSessionId: text("to_agent_session_id").notNull(),
+    repoFullName: text("repo_full_name"),
+    kind: text("kind", { enum: [...MESSAGE_KINDS] }).notNull(),
+    body: text("body").notNull(),
+    requiresResponse: integer("requires_response").notNull().default(0),
+    relatedKey: text("related_key"),
+    status: text("status", { enum: [...MESSAGE_STATUSES] })
+      .notNull()
+      .default("pending"),
+    response: text("response"),
+    createdAt: text("created_at").notNull(),
+    respondedAt: text("responded_at"),
+    expiresAt: text("expires_at").notNull(),
+  },
+  (t) => [
+    index("messages_to_status_idx").on(t.toAgentSessionId, t.status),
+    index("messages_from_status_idx").on(t.fromAgentSessionId, t.status),
+    index("messages_expires_idx").on(t.expiresAt),
+  ],
+)
+
 export type AgentSessionRow = typeof agentSessions.$inferSelect
 export type FileActivityRow = typeof fileActivity.$inferSelect
 export type AuditEventRow = typeof auditEvents.$inferSelect
 export type DecisionRow = typeof decisions.$inferSelect
 export type TaskClaimRow = typeof taskClaims.$inferSelect
 export type HandoffRow = typeof handoffs.$inferSelect
+export type MessageRow = typeof messages.$inferSelect
 
 /**
  * Idempotent DDL run once when the local DB is opened. Enforces the enum CHECK
@@ -263,4 +292,23 @@ CREATE TABLE IF NOT EXISTS handoffs (
 );
 CREATE INDEX IF NOT EXISTS handoffs_status_idx ON handoffs (status);
 CREATE INDEX IF NOT EXISTS handoffs_to_agent_idx ON handoffs (to_agent_session_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  from_agent_session_id TEXT NOT NULL,
+  to_agent_session_id TEXT NOT NULL,
+  repo_full_name TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('message','collision','decision')),
+  body TEXT NOT NULL,
+  requires_response INTEGER NOT NULL DEFAULT 0,
+  related_key TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','responded','dismissed')),
+  response TEXT,
+  created_at TEXT NOT NULL,
+  responded_at TEXT,
+  expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS messages_to_status_idx ON messages (to_agent_session_id, status);
+CREATE INDEX IF NOT EXISTS messages_from_status_idx ON messages (from_agent_session_id, status);
+CREATE INDEX IF NOT EXISTS messages_expires_idx ON messages (expires_at);
 `

@@ -15,6 +15,13 @@
       "when": 1781040210300,
       "tag": "0001_right_the_spike",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784233625421,
+      "tag": "0002_useful_kingpin",
+      "breakpoints": true
     }
   ]
 }

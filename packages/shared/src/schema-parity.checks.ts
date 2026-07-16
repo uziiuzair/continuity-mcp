@@ -7,6 +7,7 @@ import {
   toAuditEvent,
   toDecision,
   toHandoff,
+  toMessage,
   toRecentFileActivity,
   toSessionDetail,
   toTaskClaim,
@@ -35,4 +36,7 @@ export function _schemaParityChecks(): void {
 
   toAuditEvent({} as pg.AuditEventRow)
   toAuditEvent({} as sq.AuditEventRow)
+
+  toMessage({} as pg.MessageRow)
+  toMessage({} as sq.MessageRow)
 }
