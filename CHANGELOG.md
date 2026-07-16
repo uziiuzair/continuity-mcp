@@ -187,5 +187,7 @@ parallel Claude Code sessions, shipping **two flavors from one codebase**.
   from an internal deployment and should be verified against the live Claude Code
   harness (see `docs/validation-checklist.md`).
 
-[Unreleased]: https://github.com/uziiuzair/continuity-mcp/compare/v0.1.0-alpha.1...HEAD
+[Unreleased]: https://github.com/uziiuzair/continuity-mcp/compare/v0.1.0-alpha.3...HEAD
+[0.1.0-alpha.3]: https://github.com/uziiuzair/continuity-mcp/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
+[0.1.0-alpha.2]: https://github.com/uziiuzair/continuity-mcp/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/uziiuzair/continuity-mcp/releases/tag/v0.1.0-alpha.1

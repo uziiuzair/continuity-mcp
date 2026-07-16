@@ -35,6 +35,7 @@ export function renderSnapshot(data: {
     "You're working alongside other Claude Code sessions (your own parallel ones, or teammates'). Treat coordination as part of the job:",
     "- Your current focus is tracked and shared automatically — no action needed.",
     "- Before editing a shared file, call `agent_file_activity_recent`; if another live session is already in it, coordinate or pick different work instead of colliding.",
+    "- Contested edits are blocked until you coordinate: send `message_send({ to_session, about_file, body })` and the block lifts when they respond — or expires on its own. Answer messages you receive with `message_respond(id, response)` (or `message_dismiss(id, reason)`); response-required messages gate your edits and turn-end until handled.",
     "- When you start a distinct piece of work, call `agent_list_active` first; if a session already covers it, hand off or step aside.",
     "- Record calls others must respect with `decision_write`, and claim issues with `task_claim`, so work isn't duplicated.",
     "- These are MCP tools from the `continuity` server. If they aren't loaded in your session (deferred tools), load them first (e.g. via ToolSearch); the `continuity:*` skills describe the same workflows.",

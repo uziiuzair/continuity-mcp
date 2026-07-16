@@ -1,6 +1,6 @@
 # Continuity
 
-> ⚠️ **Alpha.** This is an early alpha release (`0.1.0-alpha.1`). Everything here —
+> ⚠️ **Alpha.** This is an early alpha release (`0.1.0-alpha.3`). Everything here —
 > the local and team flavors, the schema, the plugin, and the tool surface — is
 > unstable and may change without notice. Expect rough edges and breaking changes;
 > not yet recommended for production-critical workflows.
@@ -14,6 +14,10 @@ gives every session a shared view of:
 - **Decisions** — typed, append-only shared decisions with explicit supersede semantics
 - **Task claims** — atomic "I've got this issue" claims so two agents don't duplicate work
 - **Handoffs** — structured context transfers between agents (or to a human)
+- **Messaging & enforced coordination** — sessions message each other directly;
+  contested edits are blocked until the other session responds (or a timeout
+  expires — a silent teammate can never block you indefinitely), and
+  response-required messages gate edits and turn-end until answered or dismissed
 - **Audit log** — an append-only record of every coordination event
 
 Conflicts are **loud, not silent**: when two agents disagree (same decision key, same
