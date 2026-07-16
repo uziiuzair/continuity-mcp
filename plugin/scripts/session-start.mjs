@@ -2,6 +2,7 @@
 // SessionStart: inject the coordination snapshot — the headline feature. Shells
 // out to the bundled shim's `--snapshot` mode (which checks in and prints the
 // snapshot for whichever flavor is configured). Fail-open everywhere.
+import { duplicateInstallWarningFromDisk } from "./lib/doctor.mjs"
 import { nodeSupported, runShim } from "./lib/run-shim.mjs"
 import { readStdinJson } from "./lib/stdin.mjs"
 
@@ -25,9 +26,12 @@ async function main() {
     return
   }
   const out = runShim(cwd, ["--snapshot"], { timeout: 12_000 })
-  if (out?.trim()) {
+  const parts = [out?.trim(), duplicateInstallWarningFromDisk(cwd)].filter(Boolean)
+  if (parts.length > 0) {
     process.stdout.write(
-      JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: out } }),
+      JSON.stringify({
+        hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: parts.join("\n\n") },
+      }),
     )
   }
 }

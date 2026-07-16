@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, join } from "node:path"
 import pkg from "../package.json" with { type: "json" }
@@ -9,9 +10,12 @@ import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
 import { openLocalDb } from "./backends/db.js"
 import { LocalBackend } from "./backends/local.js"
 import { RemoteBackend } from "./backends/remote.js"
+import { type DeltaMemory, type SnapshotData, computeDeltas } from "./deltas.js"
+import { type SettingsLike, duplicateInstallWarning, listContinuityInstalls } from "./doctor.js"
 import { type RepoContext, resolveRepoContext } from "./gate.js"
+import { buildOthersCache } from "./guard.js"
 import { renderSnapshot } from "./snapshot.js"
-import { type SessionState, clearState, readState, writeState } from "./state.js"
+import { type SessionState, clearState, readState, stateFilePath, writeState } from "./state.js"
 import { registerAgentTools } from "./tools/agent.js"
 import { registerDecisionTools } from "./tools/decisions.js"
 import { registerGithubTools } from "./tools/github.js"
@@ -59,12 +63,45 @@ function resolveRuntime(): Runtime | null {
 
 function persistSessionId(cwdHash: string, sessionId: string, agentLabel: string): void {
   const prev = readState(cwdHash)
+  // Spread prev first: the state file also carries the delta/collision caches,
+  // which a session-id refresh must not wipe.
   writeState(cwdHash, {
+    ...prev,
     session_id: sessionId,
     agent_label: agentLabel,
     project_scope: prev?.project_scope ?? null,
     pending_files: prev?.pending_files ?? [],
     last_file_report_at: prev?.last_file_report_at ?? null,
+  })
+}
+
+// The four coordination queries the snapshot and the prompt-sync deltas share.
+async function fetchCoordinationData(rt: Runtime, sessionIdOrNull: string | null): Promise<SnapshotData> {
+  const { backend, repo } = rt
+  const sessionId = sessionIdOrNull ?? undefined
+  const [active, activity, decisions, handoffs] = await Promise.all([
+    backend.listActive({ max_age_seconds: 300, exclude_session: sessionId }).then((r) => r.sessions).catch(() => []),
+    backend.recentFileActivity({ since_seconds: 1800, exclude_session: sessionId }).then((r) => r.activity).catch(() => []),
+    backend.decisionRecent({ limit: 5 }).then((r) => r.decisions).catch(() => []),
+    backend.handoffPending({ agent_session_id: sessionId }).then((r) => r.handoffs).catch(() => []),
+  ])
+  return { active, activity, decisions, handoffs, repoFullName: repo.repoFullName }
+}
+
+// Persist the delta baseline + the collision guard's others-activity cache.
+function persistCoordinationCaches(cwdHash: string, data: SnapshotData, memory: DeltaMemory): void {
+  const latest: SessionState = readState(cwdHash) ?? {
+    session_id: null,
+    agent_label: null,
+    project_scope: null,
+    pending_files: [],
+    last_file_report_at: null,
+  }
+  writeState(cwdHash, {
+    ...latest,
+    delta_memory: memory,
+    delta_synced_at: Date.now(),
+    others_activity: buildOthersCache(data.activity, data.repoFullName),
   })
 }
 
@@ -81,15 +118,101 @@ async function runSnapshot(rt: Runtime): Promise<void> {
     return // backend unreachable — stay silent, the server will retry
   }
 
-  const [active, activity, decisions, handoffs] = await Promise.all([
-    backend.listActive({ max_age_seconds: 300, exclude_session: sessionId }).then((r) => r.sessions).catch(() => []),
-    backend.recentFileActivity({ since_seconds: 1800, exclude_session: sessionId }).then((r) => r.activity).catch(() => []),
-    backend.decisionRecent({ limit: 5 }).then((r) => r.decisions).catch(() => []),
-    backend.handoffPending({ agent_session_id: sessionId }).then((r) => r.handoffs).catch(() => []),
-  ])
-  process.stdout.write(
-    renderSnapshot({ active, activity, decisions, handoffs, repoFullName: repo.repoFullName }),
-  )
+  const data = await fetchCoordinationData(rt, sessionId)
+  // Seed the prompt-sync baseline: everything in this snapshot has been shown,
+  // so the first delta only announces what arrives after it.
+  const seeded = computeDeltas(null, data, Date.now())
+  persistCoordinationCaches(repo.cwdHash, data, seeded.memory)
+  process.stdout.write(renderSnapshot(data))
+}
+
+// How often --prompt-sync may hit the backend for deltas. Prompts inside the
+// window still heartbeat the focus but skip the fetch, so rapid-fire prompting
+// never queues coordination queries (this is the per-prompt latency budget).
+const DELTA_THROTTLE_MS = 20_000
+
+// `--prompt-sync <focus>`: heartbeat the focus, then print what changed since
+// the last sync (new sessions, others' file activity, decisions, handoffs).
+// Run by UserPromptSubmit; any output is injected as additionalContext.
+async function runPromptSync(rt: Runtime, focus: string): Promise<void> {
+  const { repo, backend, agentLabel } = rt
+  let sessionId = readState(repo.cwdHash)?.session_id ?? null
+  try {
+    if (!sessionId) {
+      const res = await backend.checkin({ agent_label: agentLabel, cwd_hash: repo.cwdHash })
+      sessionId = res.session_id
+      persistSessionId(repo.cwdHash, sessionId, agentLabel)
+    }
+    await backend.heartbeat({
+      session_id: sessionId,
+      ...(focus.trim() ? { current_focus: focus.slice(0, 280) } : {}),
+    })
+  } catch {
+    return // backend unreachable — no deltas either; fail open
+  }
+
+  const now = Date.now()
+  const state = readState(repo.cwdHash)
+  if (state?.delta_memory && now - (state.delta_synced_at ?? 0) < DELTA_THROTTLE_MS) return
+
+  const data = await fetchCoordinationData(rt, sessionId)
+  const { text, memory } = computeDeltas(state?.delta_memory ?? null, data, now)
+  persistCoordinationCaches(repo.cwdHash, data, memory)
+  if (text) process.stdout.write(text)
+}
+
+// `--doctor`: print a diagnostic report. Works even when inert — that's when
+// you need it most.
+async function runDoctor(rt: Runtime | null): Promise<void> {
+  const out: string[] = [`continuity-mcp v${pkg.version}`]
+  const [major = 0, minor = 0] = process.versions.node.split(".").map(Number)
+  const nodeOk = major > 22 || (major === 22 && minor >= 5)
+  out.push(`node ${process.versions.node} — ${nodeOk ? "OK" : "TOO OLD (need >= 22.5 for node:sqlite)"}`)
+
+  if (!rt) {
+    const allowlist = process.env.CONTINUITY_REPO_ALLOWLIST?.trim()
+    out.push(
+      "repo gate: INERT — not a git repo" +
+        (allowlist ? `, or remote not in allowlist (${allowlist})` : "") +
+        ` (cwd: ${process.cwd()})`,
+    )
+  } else {
+    out.push(`repo gate: ACTIVE — ${rt.repo.repoFullName ?? "no remote"} (${rt.repo.toplevel})`)
+    out.push(`mode: ${rt.mode}${rt.mode === "local" ? ` — db: ${defaultDbPath()}` : ` — api: ${process.env.CONTINUITY_API_URL}`}`)
+    try {
+      await rt.backend.listActive({ max_age_seconds: 60 })
+      out.push("backend: reachable")
+    } catch (err) {
+      out.push(`backend: UNREACHABLE — ${err instanceof Error ? err.message : String(err)}`)
+    }
+    const state = readState(rt.repo.cwdHash)
+    out.push(`session state: ${state?.session_id ? `session ${state.session_id}` : "none yet"} (${stateFilePath(rt.repo.cwdHash)})`)
+  }
+
+  try {
+    const readJson = (p: string): SettingsLike => {
+      try {
+        return JSON.parse(readFileSync(p, "utf8")) as SettingsLike
+      } catch {
+        return null
+      }
+    }
+    const chain: SettingsLike[] = [readJson(join(homedir(), ".claude", "settings.json"))]
+    if (rt) {
+      chain.push(readJson(join(rt.repo.toplevel, ".claude", "settings.json")))
+      chain.push(readJson(join(rt.repo.toplevel, ".claude", "settings.local.json")))
+    }
+    const installed = readFileSync(join(homedir(), ".claude", "plugins", "installed_plugins.json"), "utf8")
+    const installs = listContinuityInstalls(installed)
+    const dup = duplicateInstallWarning(installed, chain)
+    if (dup) out.push(dup)
+    else if (installs.length === 0) out.push("plugin installs: none registered (running outside a plugin?)")
+    else out.push(`plugin installs: OK — ${installs.map((i) => i.key).join(", ")} (1 enabled)`)
+  } catch {
+    out.push("plugin installs: could not read installed_plugins.json (skipped)")
+  }
+
+  process.stdout.write(`${out.join("\n")}\n`)
 }
 
 // `--checkin`: establish presence for this cwd, then exit. Run by hooks that
@@ -261,9 +384,18 @@ async function main(): Promise<void> {
   // One-shot CLI subcommands run by the plugin hooks (each a short-lived process
   // separate from the long-lived server). No flag → run the server.
   const isSubcommand =
-    has("--snapshot") || has("--checkin") || has("--checkout") || has("--focus") || has("--audit")
+    has("--snapshot") ||
+    has("--checkin") ||
+    has("--checkout") ||
+    has("--focus") ||
+    has("--prompt-sync") ||
+    has("--audit") ||
+    has("--doctor")
 
   const rt = resolveRuntime()
+  // Doctor runs even when inert — diagnosing "why is Continuity inactive here"
+  // is its main job.
+  if (has("--doctor")) return runDoctor(rt)
   if (!rt) {
     // Inert: not an activated git repo. The long-lived server still completes the
     // MCP handshake so Claude Code is happy; one-shot subcommands just exit.
@@ -283,6 +415,7 @@ async function main(): Promise<void> {
   if (has("--checkin")) return runCheckin(rt)
   if (has("--checkout")) return runCheckout(rt)
   if (has("--focus")) return runFocus(rt, valueAfter("--focus"))
+  if (has("--prompt-sync")) return runPromptSync(rt, valueAfter("--prompt-sync"))
   if (has("--audit")) return runAudit(rt, valueAfter("--audit"))
   return runServer(rt)
 }

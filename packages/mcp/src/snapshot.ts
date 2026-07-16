@@ -36,6 +36,7 @@ export function renderSnapshot(data: {
     "- Before editing a shared file, call `agent_file_activity_recent`; if another live session is already in it, coordinate or pick different work instead of colliding.",
     "- When you start a distinct piece of work, call `agent_list_active` first; if a session already covers it, hand off or step aside.",
     "- Record calls others must respect with `decision_write`, and claim issues with `task_claim`, so work isn't duplicated.",
+    "- These are MCP tools from the `continuity` server. If they aren't loaded in your session (deferred tools), load them first (e.g. via ToolSearch); the `continuity:*` skills describe the same workflows.",
     "",
     `## Live snapshot (${new Date().toISOString()})`,
     "",

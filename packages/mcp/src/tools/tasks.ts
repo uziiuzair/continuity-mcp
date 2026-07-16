@@ -10,20 +10,27 @@ export function registerTaskTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "Claim a task",
       description:
-        "Claim an issue/task at the coordination layer so other sessions don't duplicate it. A conflict means it's already claimed — pick another task or coordinate.",
+        "Claim an issue/task at the coordination layer so other sessions don't duplicate it. A conflict means it's already claimed — pick another task or coordinate. repo_full_name defaults to the current repo.",
       inputSchema: {
-        repo_full_name: z.string(),
+        repo_full_name: z.string().optional(),
         issue_number: z.number(),
         notes: z.string().optional(),
       },
     },
-    async (args) =>
-      asText(
+    async (args) => {
+      const repo = args.repo_full_name ?? ctx.repoFullName
+      if (!repo)
+        return asText({
+          error: "repo_full_name is required here: the current repo has no git remote to default from.",
+        })
+      return asText(
         await ctx.backend.taskClaim({
           ...args,
+          repo_full_name: repo,
           agent_session_id: ctx.getSessionId() ?? undefined,
         }),
-      ),
+      )
+    },
   )
 
   server.registerTool(

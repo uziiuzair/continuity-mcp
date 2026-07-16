@@ -26,6 +26,12 @@
       "type": "string",
       "title": "Local database path (optional)",
       "description": "Where the local SQLite file lives. Defaults to ~/.continuity/continuity.db. Ignored in team mode."
+    },
+    "collisionGuard": {
+      "type": "boolean",
+      "title": "Collision guard (default on)",
+      "description": "Before an edit, warn the agent once when another live session touched the same file recently. The agent can retry to proceed. Set to false to disable.",
+      "default": true
     }
   }
 }

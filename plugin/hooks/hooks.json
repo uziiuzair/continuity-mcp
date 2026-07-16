@@ -147,6 +147,23 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/pre-tool-use.mjs"],
+            "timeout": 5,
+            "env": {
+              "CONTINUITY_REPO_ALLOWLIST": "${user_config.repoAllowlist}",
+              "CONTINUITY_COLLISION_GUARD": "${user_config.collisionGuard}"
+            }
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit",

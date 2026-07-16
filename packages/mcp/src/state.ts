@@ -2,14 +2,25 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
+import type { DeltaMemory } from "./deltas.js"
+import type { OthersActivityEntry } from "./guard.js"
+
 // Shared session state, written by whichever process (SessionStart hook or this
 // shim) checks in first and read by both so they converge on one session_id.
+// The optional fields carry the mid-session coordination caches: delta_memory /
+// delta_synced_at for --prompt-sync's announce-once baseline, others_activity +
+// collision_warned for the PreToolUse collision guard (which must never touch
+// the network, so it reads what --snapshot/--prompt-sync cached here).
 export type SessionState = {
   session_id: string | null
   agent_label: string | null
   project_scope: string | null
   pending_files: { path: string; tool: string }[]
   last_file_report_at: number | null
+  delta_memory?: DeltaMemory | null
+  delta_synced_at?: number | null
+  others_activity?: OthersActivityEntry[] | null
+  collision_warned?: string[] | null
 }
 
 // State lives under the plugin's persistent data dir (survives plugin updates).

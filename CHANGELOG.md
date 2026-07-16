@@ -11,6 +11,38 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Added
+
+- **Mid-session coordination deltas.** The `UserPromptSubmit` hook now runs the
+  shim's new `--prompt-sync` mode: alongside the existing focus heartbeat, it
+  injects what changed since the last prompt — new sessions, other sessions'
+  file activity (flagged when same-repo), new decisions, and pending handoffs —
+  as `additionalContext`. Announce-once semantics (id sets + a `touched_at`
+  high-water mark in the session state file) keep it quiet when nothing changed,
+  and a 20s throttle means rapid prompting only pays the heartbeat. Previously
+  the SessionStart snapshot was the only inbound signal for the whole session.
+- **Collision guard (PreToolUse).** Before a `Write`/`Edit`/`MultiEdit`/
+  `NotebookEdit`, a new hook checks the others-activity cache that
+  `--snapshot`/`--prompt-sync` maintain in the state file (no network on the hot
+  path) and, if another live session touched the same file in the last 30
+  minutes, denies the edit once with an instructive reason. Retrying proceeds —
+  one deterministic nudge, never a hard wall. Disable with the `collisionGuard`
+  plugin option.
+- **`--doctor`.** `node <plugin>/mcp/launch.mjs --doctor` prints a diagnostic
+  report: Node version, repo gate state (and why it's inert), flavor, backend
+  reachability, session state, and duplicate continuity plugin installs. Works
+  even when inert — that's when you need it.
+- **Duplicate-install warning at SessionStart.** If more than one *enabled*
+  `continuity` plugin is installed (e.g. a stale internal build shadowing this
+  one), the SessionStart hook surfaces a warning instead of leaving the skills
+  to silently collide. Respects `enabledPlugins` across user → project → local
+  settings.
+- The snapshot now tells the model the coordination tools may be deferred (load
+  via ToolSearch) and points at the `continuity:*` skills as the always-visible
+  path.
+- `task_claim`'s `repo_full_name` is now optional — it defaults to the current
+  repo's remote.
+
 ### Fixed
 
 - **Old Node no longer fails silently.** A new version-aware launcher

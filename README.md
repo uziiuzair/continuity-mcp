@@ -59,6 +59,20 @@ your system keychain, not in `settings.json`.
 > plugin's tools are namespaced as `mcp__plugin_continuity_continuity__<tool>`
 > (e.g. `mcp__plugin_continuity_continuity__decision_write`), not bare tool names.
 
+### Troubleshooting
+
+If Continuity seems inactive or inconsistent, run the doctor from the repo in
+question:
+
+```
+node <plugin-install-path>/mcp/launch.mjs --doctor
+```
+
+It reports the Node version, why the repo gate is (in)active, which flavor is
+running, whether the backend is reachable, and whether more than one continuity
+plugin is installed and enabled (duplicate installs shadow each other's skills —
+the SessionStart hook also warns about this in-session).
+
 ## Documentation
 
 - [Architecture](./docs/architecture.md) — the two flavors, the `ContinuityBackend` seam, the data model
