@@ -47,9 +47,15 @@ export function resolveRepoContext(dir, allowlistRaw) {
   }
 
   const slash = normalized ? normalized.indexOf("/") : -1
+  // Mirror of gate.ts: CONTINUITY_SESSION_ID salts the hash so several sessions
+  // in one checkout get distinct identities. The hooks MUST derive the same
+  // cwdHash as the shim or they read a different state file and every gate
+  // silently fails open.
+  const sessionSalt = process.env.CONTINUITY_SESSION_ID
+  const hashInput = sessionSalt ? `${toplevel} ${sessionSalt}` : toplevel
   return {
     toplevel,
     repoFullName: normalized && slash >= 0 ? normalized.slice(slash + 1) : null,
-    cwdHash: createHash("sha256").update(toplevel).digest("hex").slice(0, 16),
+    cwdHash: createHash("sha256").update(hashInput).digest("hex").slice(0, 16),
   }
 }
