@@ -85,7 +85,14 @@ async function fetchCoordinationData(rt: Runtime, sessionIdOrNull: string | null
     backend.decisionRecent({ limit: 5 }).then((r) => r.decisions).catch(() => []),
     backend.handoffPending({ agent_session_id: sessionId }).then((r) => r.handoffs).catch(() => []),
   ])
-  return { active, activity, decisions, handoffs, repoFullName: repo.repoFullName }
+  return {
+    active,
+    activity,
+    decisions,
+    handoffs,
+    messages: { inbound: [], resolved: [] }, // Task 8 wires the real messagePending fetch
+    repoFullName: repo.repoFullName,
+  }
 }
 
 // Persist the delta baseline + the collision guard's others-activity cache.

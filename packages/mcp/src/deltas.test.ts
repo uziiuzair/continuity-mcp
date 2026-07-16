@@ -2,6 +2,7 @@ import type {
   ActiveSession,
   Decision,
   Handoff,
+  Message,
   RecentFileActivity,
 } from "@continuity/shared"
 import { describe, expect, it } from "vitest"
@@ -72,7 +73,25 @@ function handoff(overrides: Partial<Handoff> = {}): Handoff {
   }
 }
 
-const empty = { active: [], activity: [], decisions: [], handoffs: [], repoFullName: null }
+function message(overrides: Partial<Message> = {}): Message {
+  return {
+    id: "m1", from_agent_session_id: "s2", to_agent_session_id: "s1",
+    repo_full_name: "o/r", kind: "message", body: "which auth lib?",
+    requires_response: true, related_key: null, status: "pending",
+    response: null, created_at: iso(-30_000), responded_at: null,
+    expires_at: iso(8 * 60_000), from_agent_label: "alpha", from_user_name: "Ann",
+    ...overrides,
+  }
+}
+
+const empty = {
+  active: [],
+  activity: [],
+  decisions: [],
+  handoffs: [],
+  messages: { inbound: [], resolved: [] },
+  repoFullName: null,
+}
 
 describe("computeDeltas", () => {
   it("seeds silently on first run (no memory): null text, memory covers current data", () => {
@@ -174,5 +193,66 @@ describe("DeltaMemory shape", () => {
     const { memory } = computeDeltas(null, empty, NOW)
     const parsed = JSON.parse(JSON.stringify(memory)) as DeltaMemory
     expect(computeDeltas(parsed, empty, NOW).text).toBeNull()
+  })
+})
+
+describe("computeDeltas: messages", () => {
+  it("announces new inbound messages once, with respond instruction and expiry", () => {
+    const seeded = computeDeltas(null, empty, NOW).memory
+    const data = { ...empty, messages: { inbound: [message()], resolved: [] } }
+    const first = computeDeltas(seeded, data, NOW)
+    expect(first.text).toContain("alpha (Ann)")
+    expect(first.text).toContain("message_respond(m1)")
+    expect(first.text).toContain("response required")
+    expect(first.text).toContain("8m")
+    expect(computeDeltas(first.memory, data, NOW).text).toBeNull()
+  })
+  it("renders non-required messages without the response-required tag", () => {
+    const seeded = computeDeltas(null, empty, NOW).memory
+    const fyi = message({ id: "m2", requires_response: false, body: "fyi: deploy done" })
+    const { text } = computeDeltas(seeded, { ...empty, messages: { inbound: [fyi], resolved: [] } }, NOW)
+    expect(text).toContain("fyi: deploy done")
+    expect(text).not.toContain("response required")
+  })
+  it("labels decision-ack requests distinctly", () => {
+    const seeded = computeDeltas(null, empty, NOW).memory
+    const ack = message({ kind: "decision", related_key: "orm", body: "Decision [orm]: use Drizzle" })
+    const { text } = computeDeltas(seeded, { ...empty, messages: { inbound: [ack], resolved: [] } }, NOW)
+    expect(text).toContain("requires your ack")
+    expect(text).toContain("[orm]")
+  })
+  it("announces resolutions of my outbound once, without misattributing a name", () => {
+    const seeded = computeDeltas(null, empty, NOW).memory
+    const resolved = message({ id: "m9", status: "responded", response: "use better-auth", responded_at: iso(-1000) })
+    const data = { ...empty, messages: { inbound: [], resolved: [resolved] } }
+    const first = computeDeltas(seeded, data, NOW)
+    expect(first.text).toContain("Response received")
+    expect(first.text).toContain("use better-auth")
+    expect(computeDeltas(first.memory, data, NOW).text).toBeNull()
+  })
+  it("marks dismissals and collision context on resolved lines", () => {
+    const seeded = computeDeltas(null, empty, NOW).memory
+    const dismissed = message({ id: "m10", kind: "collision", related_key: "src/db.ts", status: "dismissed", response: "mid-refactor here, hold off", responded_at: iso(-1000) })
+    const { text } = computeDeltas(seeded, { ...empty, messages: { inbound: [], resolved: [dismissed] } }, NOW)
+    expect(text).toContain("dismissed")
+    expect(text).toContain("src/db.ts")
+    expect(text).toContain("hold off")
+  })
+  it("seeds message ids silently on first run", () => {
+    const data = { ...empty, messages: { inbound: [message({ id: "mA" })], resolved: [message({ id: "mB", status: "responded", responded_at: iso(-1000) })] } }
+    const { text, memory } = computeDeltas(null, data, NOW)
+    expect(text).toBeNull()
+    expect(memory.known_inbound).toContain("mA")
+    expect(memory.known_resolved).toContain("mB")
+  })
+  it("announces a new inbound message even when the stored memory predates known_inbound/known_resolved", () => {
+    const seeded = computeDeltas(null, empty, NOW).memory
+    // Simulate a pre-upgrade state file loaded from disk: no known_inbound/known_resolved fields.
+    const { known_inbound: _known_inbound, known_resolved: _known_resolved, ...rest } = seeded
+    const oldMemory = rest as DeltaMemory
+    const data = { ...empty, messages: { inbound: [message()], resolved: [] } }
+    expect(() => computeDeltas(oldMemory, data, NOW)).not.toThrow()
+    const { text } = computeDeltas(oldMemory, data, NOW)
+    expect(text).toContain("message_respond(m1)")
   })
 })

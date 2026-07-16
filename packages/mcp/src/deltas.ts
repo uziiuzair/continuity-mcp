@@ -4,7 +4,7 @@
 // output as additionalContext. Memory lives in the session state file, so the
 // baseline survives across the short-lived hook processes.
 
-import type { ActiveSession, Decision, Handoff, RecentFileActivity } from "@continuity/shared"
+import type { ActiveSession, Decision, Handoff, Message, RecentFileActivity } from "@continuity/shared"
 
 // Bounded so the state file can't grow without limit. Sessions/decisions/
 // handoffs are tracked by id (announce-once, even if they drop out of the
@@ -17,6 +17,8 @@ export type DeltaMemory = {
   known_sessions: string[]
   known_decisions: string[]
   known_handoffs: string[]
+  known_inbound: string[]
+  known_resolved: string[]
   activity_high_water: string | null
 }
 
@@ -25,6 +27,7 @@ export type SnapshotData = {
   activity: RecentFileActivity[]
   decisions: Decision[]
   handoffs: Handoff[]
+  messages: { inbound: Message[]; resolved: Message[] }
   repoFullName: string | null
 }
 
@@ -61,7 +64,7 @@ export function computeDeltas(
   data: SnapshotData,
   nowMs: number,
 ): { text: string | null; memory: DeltaMemory } {
-  const { active, activity, decisions, handoffs, repoFullName } = data
+  const { active, activity, decisions, handoffs, messages, repoFullName } = data
 
   const highWater = activity.reduce<string | null>(
     (hw, a) => maxIso(hw, a.touched_at),
@@ -77,10 +80,16 @@ export function computeDeltas(
         known_sessions: remember([], active.map((s) => s.session_id)),
         known_decisions: remember([], decisions.map((d) => d.id)),
         known_handoffs: remember([], handoffs.map((h) => h.id)),
+        known_inbound: remember([], messages.inbound.map((m) => m.id)),
+        known_resolved: remember([], messages.resolved.map((m) => m.id)),
         activity_high_water: highWater,
       },
     }
   }
+
+  // Old state files predate the messages fields — guard so loading one doesn't crash.
+  const knownInbound = memory.known_inbound ?? []
+  const knownResolved = memory.known_resolved ?? []
 
   const newSessions = active.filter((s) => !memory.known_sessions.includes(s.session_id))
   const newActivity = memory.activity_high_water
@@ -90,15 +99,26 @@ export function computeDeltas(
     : activity
   const newDecisions = decisions.filter((d) => !memory.known_decisions.includes(d.id))
   const newHandoffs = handoffs.filter((h) => !memory.known_handoffs.includes(h.id))
+  const newInbound = messages.inbound.filter((m) => !knownInbound.includes(m.id))
+  const newResolved = messages.resolved.filter((m) => !knownResolved.includes(m.id))
 
   const nextMemory: DeltaMemory = {
     known_sessions: remember(memory.known_sessions, active.map((s) => s.session_id)),
     known_decisions: remember(memory.known_decisions, decisions.map((d) => d.id)),
     known_handoffs: remember(memory.known_handoffs, handoffs.map((h) => h.id)),
+    known_inbound: remember(knownInbound, messages.inbound.map((m) => m.id)),
+    known_resolved: remember(knownResolved, messages.resolved.map((m) => m.id)),
     activity_high_water: highWater,
   }
 
-  if (!newSessions.length && !newActivity.length && !newDecisions.length && !newHandoffs.length) {
+  if (
+    !newSessions.length &&
+    !newActivity.length &&
+    !newDecisions.length &&
+    !newHandoffs.length &&
+    !newInbound.length &&
+    !newResolved.length
+  ) {
     return { text: null, memory: nextMemory }
   }
 
@@ -120,6 +140,22 @@ export function computeDeltas(
   }
   for (const h of newHandoffs.slice(0, 5)) {
     lines.push(`- New handoff for you: ${oneLine(h.context)} → accept via handoff_accept(${h.id})`)
+  }
+  for (const m of newInbound.slice(0, 5)) {
+    const who = `${m.from_agent_label ?? "another session"} (${m.from_user_name ?? "?"})`
+    if (m.kind === "decision") {
+      lines.push(`- Decision [${m.related_key}] requires your ack → message_respond(${m.id})`)
+    } else {
+      const req = m.requires_response
+        ? ` [response required, expires in ${Math.max(1, Math.ceil((new Date(m.expires_at).getTime() - nowMs) / 60_000))}m]`
+        : ""
+      lines.push(`- Message from ${who}: "${oneLine(m.body)}" → respond via message_respond(${m.id})${req}`)
+    }
+  }
+  for (const m of newResolved.slice(0, 5)) {
+    const verb = m.status === "dismissed" ? "dismissed" : "Response received"
+    const re = m.kind === "collision" && m.related_key ? ` (re: your collision message on ${m.related_key})` : ""
+    lines.push(`- ${verb}: "${oneLine(m.response ?? "")}"${re}`)
   }
 
   return { text: lines.join("\n"), memory: nextMemory }
