@@ -180,7 +180,8 @@ the 30m activity window):
 | no `collision_sent[P]`                           | deny: "session X is in this file — coordinate via `message_send({to_session: "<X>", about_file: "<P>", body: …})`, or pick other work; the block expires with the activity window." |
 | `collision_sent[P]` pending, unexpired           | deny: "awaiting response from X, expires in Nm — work elsewhere meanwhile" |
 | `collision_sent[P]` responded                    | allow (prompt-sync injected the response) |
-| `collision_sent[P]` expired                      | allow; prompt-sync notes "proceeded without response" |
+| `collision_sent[P]` dismissed                    | allow — dismissal resolves the sender's gate exactly like a response; the dismissal reason reaches the sender via prompt-sync, so proceeding is informed, and a deny here would invite message ping-pong and violate the never-outlive-the-window rule |
+| `collision_sent[P]` expired (or malformed `expires_at`) | allow; fail open |
 | mode `warn`                                      | today's warn-once behavior |
 | mode `off`                                       | allow |
 
