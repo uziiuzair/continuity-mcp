@@ -1144,3 +1144,5 @@ Pass the timeout into the MCP server env (check `plugin/.mcp.json` for how apiUr
 ## Follow-up plan (not in this plan)
 
 Team-flavor server: Worker routes `/messages/{send,respond,list,pending}` mirroring LocalBackend semantics, janitor sweep of old messages, contract-parity check extension, pg migration applied to Neon. Until then team mode's message tools return the Worker's 404 loudly.
+
+**Note for the follow-up server plan:** the RemoteBackend client uses plain `post()` for `/messages/send` and `/messages/respond`; `post()` swallows 409 bodies as typed successes (the `raw()` 409-unwrap is only used where conflict semantics exist). Message routes must therefore never signal errors with 409 — use 4xx codes the client throws on (400/404/410).

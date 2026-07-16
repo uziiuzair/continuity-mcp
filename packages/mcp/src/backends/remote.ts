@@ -186,6 +186,8 @@ export class RemoteBackend implements ContinuityBackend, TeamBackend {
   }
 
   // ---- Messages ----
+  // Server routes land in the follow-up Worker plan; team mode 404s loudly on
+  // these until then (documented behavior for this release).
 
   messageSend(args: MessageSendArgs): Promise<{ message_ids: string[]; delivered: number; expires_at: string }> {
     return this.post("/messages/send", args)
