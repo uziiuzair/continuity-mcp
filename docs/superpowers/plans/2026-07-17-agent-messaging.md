@@ -1033,8 +1033,8 @@ write `pending_inbound: pendingInbound, collision_sent: collisionSent` in the `w
   }
 
   const ack = ackGateDecision({ pendingInbound: state?.pending_inbound, messageWarned: state?.message_warned, nowMs })
-  if (ack.warn) {
-    if (state) writeState(repo.cwdHash, { ...state, message_warned: ack.warned })
+  if (ack.action === "deny") {
+    if (ack.warned && state) writeState(repo.cwdHash, { ...state, message_warned: ack.warned })
     return deny(ack.reason)
   }
 ```
