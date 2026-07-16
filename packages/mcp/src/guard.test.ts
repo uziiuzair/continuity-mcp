@@ -1,11 +1,15 @@
+import type { Message } from "@continuity/shared"
 import { describe, expect, it } from "vitest"
 import {
+  type CollisionSentMap,
   type OthersActivityEntry,
   ackGateDecision,
   buildOthersCache,
+  buildPendingInbound,
   collisionDecision,
   collisionDecisionV2,
   parseGuardMode,
+  reconcileCollisionSent,
   stopGateDecision,
 } from "./guard.js"
 
@@ -352,5 +356,127 @@ describe("parseGuardMode", () => {
     expect(parseGuardMode("off")).toBe("off")
     expect(parseGuardMode("warn")).toBe("warn")
     expect(parseGuardMode("Negotiate")).toBe("negotiate")
+  })
+})
+
+function msg(overrides: Partial<Message> = {}): Message {
+  return {
+    id: "m1", from_agent_session_id: "s2", to_agent_session_id: "s1",
+    repo_full_name: "o/r", kind: "collision", body: "want to edit src/app.ts",
+    requires_response: true, related_key: "src/app.ts", status: "responded",
+    response: "go ahead", created_at: iso(-5 * 60_000), responded_at: iso(-60_000),
+    expires_at: iso(5 * 60_000), from_agent_label: "alpha", from_user_name: "Ann",
+    ...overrides,
+  }
+}
+
+describe("buildPendingInbound", () => {
+  it("flattens fresh inbound into the gate-cache shape, capping the body at 140", () => {
+    const long = "x".repeat(200)
+    const [e] = buildPendingInbound([
+      msg({ id: "m7", kind: "message", related_key: null, body: long, requires_response: true }),
+    ])
+    expect(e).toEqual({
+      message_id: "m7",
+      from_label: "alpha",
+      from_user: "Ann",
+      body: "x".repeat(140),
+      kind: "message",
+      related_key: null,
+      requires_response: true,
+      expires_at: iso(5 * 60_000),
+    })
+  })
+
+  it("falls back to 'another session' / '?' when the joined names are missing", () => {
+    const [e] = buildPendingInbound([msg({ from_agent_label: undefined, from_user_name: undefined })])
+    expect(e?.from_label).toBe("another session")
+    expect(e?.from_user).toBe("?")
+  })
+})
+
+describe("reconcileCollisionSent", () => {
+  const stamp = (over: Partial<CollisionSentMap[string]> = {}): CollisionSentMap[string] => ({
+    message_id: "m1",
+    expires_at: iso(10 * 60_000),
+    status: "pending",
+    ...over,
+  })
+
+  it("updates a stamp's status and records resolved_at when the matching resolution arrives", () => {
+    const prev = { "src/app.ts": stamp() }
+    const next = reconcileCollisionSent(prev, [msg({ status: "responded", responded_at: iso(-1000) })], [], NOW)
+    expect(next["src/app.ts"]).toEqual({ ...stamp(), status: "responded", resolved_at: iso(-1000) })
+  })
+
+  it("ignores a resolution whose message_id differs (stale resolution must not clobber a re-send)", () => {
+    const prev = { "src/app.ts": stamp({ message_id: "m2" }) }
+    const next = reconcileCollisionSent(prev, [msg({ id: "m1", status: "responded" })], [], NOW)
+    expect(next["src/app.ts"]?.status).toBe("pending")
+  })
+
+  it("ignores non-collision resolutions and ones without a related_key", () => {
+    const prev = { "src/app.ts": stamp() }
+    const next = reconcileCollisionSent(
+      prev,
+      [msg({ kind: "message", status: "responded" }), msg({ related_key: null, status: "responded" })],
+      [],
+      NOW,
+    )
+    expect(next["src/app.ts"]?.status).toBe("pending")
+  })
+
+  it("drops pending stamps whose expiry passed or is malformed, keeps unexpired ones", () => {
+    const prev = {
+      "a.ts": stamp({ expires_at: iso(-1000) }),
+      "b.ts": stamp({ expires_at: "not-a-date" }),
+      "c.ts": stamp({ expires_at: iso(60_000) }),
+    }
+    const next = reconcileCollisionSent(prev, [], [], NOW)
+    expect(Object.keys(next)).toEqual(["c.ts"])
+  })
+
+  it("drops a resolved stamp when same-path activity is newer than the resolution (re-contention)", () => {
+    const prev = { "src/app.ts": stamp({ status: "responded", resolved_at: iso(-5 * 60_000) }) }
+    const fresh = [entry({ path: "src/app.ts", touched_at: iso(-60_000) })]
+    const next = reconcileCollisionSent(prev, [], fresh, NOW)
+    expect(next["src/app.ts"]).toBeUndefined()
+  })
+
+  it("keeps a resolved stamp when the same-path activity predates the resolution", () => {
+    const prev = { "src/app.ts": stamp({ status: "responded", resolved_at: iso(-60_000) }) }
+    const older = [entry({ path: "src/app.ts", touched_at: iso(-5 * 60_000) })]
+    const next = reconcileCollisionSent(prev, [], older, NOW)
+    expect(next["src/app.ts"]?.status).toBe("responded")
+  })
+
+  it("treats a resolved stamp without resolved_at as re-contended by any fresh activity (fail-safe)", () => {
+    const prev = { "src/app.ts": stamp({ status: "dismissed" }) }
+    const next = reconcileCollisionSent(prev, [], [entry({ path: "src/app.ts" })], NOW)
+    expect(next["src/app.ts"]).toBeUndefined()
+  })
+
+  it("does not drop a resolved stamp for activity on other paths", () => {
+    const prev = { "src/app.ts": stamp({ status: "responded" }) }
+    const next = reconcileCollisionSent(prev, [], [entry({ path: "src/other.ts" })], NOW)
+    expect(next["src/app.ts"]?.status).toBe("responded")
+  })
+
+  it("caps the map at 50 entries, dropping the oldest by expires_at", () => {
+    const prev: CollisionSentMap = {}
+    for (let i = 0; i < 60; i++) {
+      prev[`f${i}.ts`] = stamp({ message_id: `m${i}`, expires_at: iso(i * 60_000), status: "responded" })
+    }
+    const next = reconcileCollisionSent(prev, [], [], NOW)
+    expect(Object.keys(next)).toHaveLength(50)
+    expect(next["f0.ts"]).toBeUndefined()
+    expect(next["f9.ts"]).toBeUndefined()
+    expect(next["f10.ts"]).toBeDefined()
+    expect(next["f59.ts"]).toBeDefined()
+  })
+
+  it("handles a null/undefined previous map", () => {
+    expect(reconcileCollisionSent(null, [], [], NOW)).toEqual({})
+    expect(reconcileCollisionSent(undefined, [msg()], [entry()], NOW)).toEqual({})
   })
 })

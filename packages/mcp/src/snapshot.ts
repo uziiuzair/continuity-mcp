@@ -79,8 +79,13 @@ export function renderSnapshot(data: {
   if (messages.inbound.length > 0) {
     lines.push("", "### Pending messages for you")
     for (const m of messages.inbound.slice(0, 5)) {
-      const req = m.requires_response ? " [response required]" : ""
-      lines.push(`- ${oneLine(m.body)} → message_respond(${m.id}, "<reply>")${req}`)
+      // Decision-ack requests render in the same shape the delta renderer uses.
+      if (m.kind === "decision") {
+        lines.push(`- Decision [${m.related_key ?? "?"}] requires your ack → message_respond(${m.id}, "<ack>")`)
+      } else {
+        const req = m.requires_response ? " [response required]" : ""
+        lines.push(`- ${oneLine(m.body)} → message_respond(${m.id}, "<reply>")${req}`)
+      }
     }
   }
 

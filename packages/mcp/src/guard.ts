@@ -6,7 +6,7 @@
 // attempt is denied with an instructive reason, the retry passes, so the model
 // gets one deterministic nudge and never a hard wall.
 
-import type { RecentFileActivity } from "@continuity/shared"
+import type { Message, RecentFileActivity } from "@continuity/shared"
 
 const DEFAULT_WINDOW_MS = 30 * 60_000
 const MAX_WARNED = 100
@@ -118,7 +118,91 @@ export type PendingInboundEntry = {
   expires_at: string
 }
 
-export type CollisionSentMap = Record<string, { message_id: string; expires_at: string; status: string }>
+export type CollisionSentMap = Record<
+  string,
+  { message_id: string; expires_at: string; status: string; resolved_at?: string }
+>
+
+// Flatten fresh inbound messages into the gate cache the ack/stop gates read
+// from the state file. Body capped so the state file stays small; label
+// fallbacks match the delta renderer.
+export function buildPendingInbound(inbound: Message[]): PendingInboundEntry[] {
+  return inbound.map((m) => ({
+    message_id: m.id,
+    from_label: m.from_agent_label ?? "another session",
+    from_user: m.from_user_name ?? "?",
+    body: m.body.slice(0, 140),
+    kind: m.kind,
+    related_key: m.related_key,
+    requires_response: m.requires_response,
+    expires_at: m.expires_at,
+  }))
+}
+
+// State-file bloat guard, parity with MAX_CACHE/MAX_IDS.
+const MAX_COLLISION_SENT = 50
+
+// Reconcile the sender-side collision stamps with this sync's resolutions and
+// fresh same-repo activity:
+// - responded/dismissed rows update the stamp's status (and record resolved_at)
+//   only when the message_id matches, so a stale resolution never clobbers a
+//   newer re-send on the same path;
+// - expired-unanswered pending stamps drop (the guard already allows past
+//   expiry — this just keeps the map from accumulating);
+// - resolved stamps lapse when contesting activity NEWER than the resolution
+//   arrives — old consent must not mask a new collision (re-contention);
+// - the map is hard-capped, dropping the oldest by expires_at.
+// Invariant that keeps this safe: messagePending's 30m resolved window is far
+// wider than the default 10m message expiry, so an answered message is always
+// seen by a sync before its stamp could be mistaken for stale.
+export function reconcileCollisionSent(
+  prev: CollisionSentMap | null | undefined,
+  resolved: Message[],
+  activity: OthersActivityEntry[],
+  nowMs: number,
+): CollisionSentMap {
+  const next: CollisionSentMap = { ...(prev ?? {}) }
+
+  for (const m of resolved) {
+    if (m.kind === "collision" && m.related_key && next[m.related_key]?.message_id === m.id) {
+      next[m.related_key] = {
+        ...next[m.related_key]!,
+        status: m.status,
+        ...(m.responded_at ? { resolved_at: m.responded_at } : {}),
+      }
+    }
+  }
+
+  for (const [path, entry] of Object.entries(next)) {
+    if (entry.status === "pending") {
+      const t = new Date(entry.expires_at).getTime()
+      if (!Number.isFinite(t) || t <= nowMs) delete next[path]
+      continue
+    }
+    // Re-contention: consent lapses when the same path is touched again after
+    // the resolution. A resolved stamp with no resolved_at recorded (pre-
+    // upgrade state) fails safe — any fresh activity drops it — so the next
+    // guard check falls to "no stamp → coordinate first" and negotiation
+    // re-opens.
+    const recordedAt = entry.resolved_at ? new Date(entry.resolved_at).getTime() : 0
+    const resolvedAt = Number.isFinite(recordedAt) ? recordedAt : 0
+    if (activity.some((a) => a.path === path && new Date(a.touched_at).getTime() > resolvedAt)) {
+      delete next[path]
+    }
+  }
+
+  const entries = Object.entries(next)
+  if (entries.length > MAX_COLLISION_SENT) {
+    const time = (e: CollisionSentMap[string]): number => {
+      const t = new Date(e.expires_at).getTime()
+      return Number.isFinite(t) ? t : 0
+    }
+    entries.sort((a, b) => time(a[1]) - time(b[1]))
+    for (const [path] of entries.slice(0, entries.length - MAX_COLLISION_SENT)) delete next[path]
+  }
+
+  return next
+}
 
 export type GuardResult = { action: "allow" } | { action: "deny"; reason: string; warned?: string[] }
 

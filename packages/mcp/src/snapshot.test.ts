@@ -171,4 +171,25 @@ describe("renderSnapshot", () => {
     expect(out).toContain('message_respond(m1, ')
     expect(out).toContain("[response required]")
   })
+
+  it("does not tag messages that don't require a response", () => {
+    const out = renderSnapshot({
+      ...empty,
+      messages: { inbound: [message({ requires_response: false, body: "fyi: deploy done" })], resolved: [] },
+    })
+    expect(out).toContain("fyi: deploy done")
+    expect(out).not.toContain("[response required]")
+  })
+
+  it("renders decision-ack requests distinctly, matching the delta shape", () => {
+    const out = renderSnapshot({
+      ...empty,
+      messages: {
+        inbound: [message({ id: "m3", kind: "decision", related_key: "orm", body: "Decision [orm]: use Drizzle" })],
+        resolved: [],
+      },
+    })
+    expect(out).toContain("Decision [orm] requires your ack")
+    expect(out).toContain('message_respond(m3, "<ack>")')
+  })
 })

@@ -13,7 +13,7 @@ import { RemoteBackend } from "./backends/remote.js"
 import { type DeltaMemory, type SnapshotData, computeDeltas } from "./deltas.js"
 import { type SettingsLike, duplicateInstallWarning, listContinuityInstalls } from "./doctor.js"
 import { type RepoContext, resolveRepoContext } from "./gate.js"
-import { type CollisionSentMap, type PendingInboundEntry, buildOthersCache } from "./guard.js"
+import { buildOthersCache, buildPendingInbound, reconcileCollisionSent } from "./guard.js"
 import { renderSnapshot } from "./snapshot.js"
 import { type SessionState, clearState, readState, stateFilePath, writeState } from "./state.js"
 import { registerAgentTools } from "./tools/agent.js"
@@ -101,7 +101,8 @@ async function fetchCoordinationData(rt: Runtime, sessionIdOrNull: string | null
 
 // Persist the delta baseline + the collision guard's others-activity cache,
 // the inbound-message cache the ack/stop gates read, and the collision_sent
-// map reconciled against fresh resolutions and expiry.
+// map reconciled against this sync's resolutions, expiry, and re-contention
+// (see reconcileCollisionSent in guard.ts for the rules).
 function persistCoordinationCaches(cwdHash: string, data: SnapshotData, memory: DeltaMemory): void {
   const latest: SessionState = readState(cwdHash) ?? {
     session_id: null,
@@ -110,42 +111,16 @@ function persistCoordinationCaches(cwdHash: string, data: SnapshotData, memory: 
     pending_files: [],
     last_file_report_at: null,
   }
-
-  const pendingInbound: PendingInboundEntry[] = data.messages.inbound.map((m) => ({
-    message_id: m.id,
-    from_label: m.from_agent_label ?? "session",
-    from_user: m.from_user_name ?? "?",
-    body: m.body.slice(0, 140),
-    kind: m.kind,
-    related_key: m.related_key,
-    requires_response: m.requires_response,
-    expires_at: m.expires_at,
-  }))
-
-  // Reconcile collision_sent with resolutions and expiry so the guard unlocks:
-  // responded/dismissed rows update the stamp's status; expired-unanswered
-  // pending stamps are dropped (the guard already allows past expiry — this
-  // just keeps the map from accumulating).
-  const collisionSent: CollisionSentMap = { ...(latest.collision_sent ?? {}) }
-  for (const m of data.messages.resolved) {
-    if (m.kind === "collision" && m.related_key && collisionSent[m.related_key]?.message_id === m.id) {
-      collisionSent[m.related_key] = { ...collisionSent[m.related_key]!, status: m.status }
-    }
-  }
-  for (const [path, entry] of Object.entries(collisionSent)) {
-    const t = new Date(entry.expires_at).getTime()
-    if (entry.status === "pending" && (!Number.isFinite(t) || t <= Date.now())) {
-      delete collisionSent[path]
-    }
-  }
-
+  // The same fresh same-repo cache is both persisted for the guard and used to
+  // detect re-contention on resolved collision stamps.
+  const others = buildOthersCache(data.activity, data.repoFullName)
   writeState(cwdHash, {
     ...latest,
     delta_memory: memory,
     delta_synced_at: Date.now(),
-    others_activity: buildOthersCache(data.activity, data.repoFullName),
-    pending_inbound: pendingInbound,
-    collision_sent: collisionSent,
+    others_activity: others,
+    pending_inbound: buildPendingInbound(data.messages.inbound),
+    collision_sent: reconcileCollisionSent(latest.collision_sent, data.messages.resolved, others, Date.now()),
   })
 }
 
