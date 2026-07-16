@@ -1,6 +1,6 @@
 {
   "name": "@continuity/server",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "private": true,
   "description": "Continuity team-flavor backend — a Cloudflare Worker (Hono + Drizzle) over Neon Postgres.",
   "license": "MIT",

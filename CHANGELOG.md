@@ -11,6 +11,8 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2] - 2026-07-16
+
 ### Added
 
 - **Mid-session coordination deltas.** The `UserPromptSubmit` hook now runs the

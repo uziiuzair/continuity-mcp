@@ -1,6 +1,6 @@
 {
   "name": "continuity-mcp",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "private": true,
   "description": "Alpha. Coordination for parallel Claude Code sessions — shared presence, file-activity awareness, decisions, task claims, and handoffs. Local (SQLite) or team (Cloudflare Worker + Neon) flavors.",
   "license": "MIT",
