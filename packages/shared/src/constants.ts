@@ -17,6 +17,8 @@ export const DEFAULT_LIST_ACTIVE_WINDOW_S = 300
 export const DEFAULT_RECENT_FILE_WINDOW_S = 1800
 /** Default lookback for `decision_recent` (seconds): 7 days. */
 export const DEFAULT_DECISION_RECENT_WINDOW_S = 7 * 24 * 60 * 60
+// Default lifetime of a message / enforcement block (the timeout-override rule).
+export const DEFAULT_MESSAGE_TIMEOUT_MIN = 10
 
 // ---- Enum vocabularies (kept as readonly tuples for runtime validation) ----
 

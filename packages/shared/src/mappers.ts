@@ -15,6 +15,9 @@ import type {
   DecisionType,
   Handoff,
   HandoffStatus,
+  Message,
+  MessageKind,
+  MessageStatus,
   RecentFileActivity,
   SessionDetail,
   SessionStatus,
@@ -214,5 +217,43 @@ export function toAuditEvent(r: AuditEventRowLike): AuditEvent {
     agent_session_id: r.agentSessionId,
     payload: r.payload,
     created_at: toIso(r.createdAt),
+  }
+}
+
+type MessageRowLike = {
+  id: string
+  fromAgentSessionId: string
+  toAgentSessionId: string
+  repoFullName: string | null
+  kind: MessageKind
+  body: string
+  requiresResponse: number | boolean
+  relatedKey: string | null
+  status: MessageStatus
+  response: string | null
+  createdAt: TimestampLike
+  respondedAt: TimestampLike | null
+  expiresAt: TimestampLike
+  fromAgentLabel?: string | null
+  fromUserName?: string | null
+}
+
+export function toMessage(r: MessageRowLike): Message {
+  return {
+    id: r.id,
+    from_agent_session_id: r.fromAgentSessionId,
+    to_agent_session_id: r.toAgentSessionId,
+    repo_full_name: r.repoFullName,
+    kind: r.kind,
+    body: r.body,
+    requires_response: Boolean(r.requiresResponse),
+    related_key: r.relatedKey,
+    status: r.status,
+    response: r.response,
+    created_at: toIso(r.createdAt),
+    responded_at: toIsoOrNull(r.respondedAt),
+    expires_at: toIso(r.expiresAt),
+    from_agent_label: r.fromAgentLabel ?? undefined,
+    from_user_name: r.fromUserName ?? undefined,
   }
 }

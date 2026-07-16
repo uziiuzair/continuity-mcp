@@ -21,6 +21,9 @@ import type {
   DecisionType,
   FileTool,
   Handoff,
+  Message,
+  MessageKind,
+  MessageStatus,
   RecentFileActivity,
   SessionDetail,
   TaskClaim,
@@ -101,6 +104,25 @@ export type HandoffPendingArgs = {
 
 export type AuditRecentArgs = { since?: string; type?: string; limit?: number }
 
+export type MessageSendArgs = {
+  from_session: string
+  to_session?: string
+  broadcast?: boolean
+  kind: MessageKind
+  body: string
+  requires_response?: boolean
+  related_key?: string | null
+  repo_full_name?: string | null
+  expires_in_minutes?: number
+}
+export type MessageRespondArgs = { message_id: string; response: string; dismiss?: boolean }
+export type MessageListArgs = {
+  session_id: string
+  direction?: "inbound" | "outbound"
+  status?: MessageStatus
+  limit?: number
+}
+
 export interface ContinuityBackend {
   // ---- Presence (driven by the shim/hooks, not the model) ----
   checkin(args: CheckinArgs): Promise<CheckinResult>
@@ -130,6 +152,16 @@ export interface ContinuityBackend {
   handoffPending(args: HandoffPendingArgs): Promise<{ handoffs: Handoff[] }>
   handoffAccept(args: { handoff_id: string; agent_session_id?: string }): Promise<{ handoff: Handoff }>
   handoffComplete(args: { handoff_id: string; outcome?: string }): Promise<{ handoff: Handoff }>
+
+  // ---- Messages ----
+  // expires_at returned so the sender can track its own block windows without
+  // a second query.
+  messageSend(args: MessageSendArgs): Promise<{ message_ids: string[]; delivered: number; expires_at: string }>
+  messageRespond(args: MessageRespondArgs): Promise<{ ok: boolean }>
+  messageList(args: MessageListArgs): Promise<{ messages: Message[] }>
+  // Everything prompt-sync needs in one call: pending unexpired inbound for me,
+  // plus my outbound rows resolved (responded/dismissed) in the last 30 minutes.
+  messagePending(args: { session_id: string }): Promise<{ inbound: Message[]; resolved: Message[] }>
 
   // ---- Audit ----
   auditRecent(args: AuditRecentArgs): Promise<{ events: AuditEvent[] }>

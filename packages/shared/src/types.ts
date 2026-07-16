@@ -138,3 +138,27 @@ export type AuditEvent = {
   payload: string | null
   created_at: string
 }
+
+// ---- Messages ----
+
+export type MessageKind = "message" | "collision" | "decision"
+export type MessageStatus = "pending" | "responded" | "dismissed"
+
+export type Message = {
+  id: string
+  from_agent_session_id: string
+  to_agent_session_id: string
+  repo_full_name: string | null
+  kind: MessageKind
+  body: string
+  requires_response: boolean
+  related_key: string | null
+  status: MessageStatus
+  response: string | null
+  created_at: string
+  responded_at: string | null
+  expires_at: string
+  // Joined for display on list/pending responses.
+  from_agent_label?: string
+  from_user_name?: string
+}
