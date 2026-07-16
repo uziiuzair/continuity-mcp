@@ -8,6 +8,8 @@ import type {
   DECISION_TYPES,
   FILE_TOOLS,
   HANDOFF_STATUSES,
+  MESSAGE_KINDS,
+  MESSAGE_STATUSES,
   SESSION_STATUSES,
 } from "./constants.js"
 
@@ -17,6 +19,8 @@ export type DecisionStatus = (typeof DECISION_STATUSES)[number]
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number]
 export type HandoffStatus = (typeof HANDOFF_STATUSES)[number]
 export type FileTool = (typeof FILE_TOOLS)[number]
+export type MessageKind = (typeof MESSAGE_KINDS)[number]
+export type MessageStatus = (typeof MESSAGE_STATUSES)[number]
 
 /**
  * The acting identity behind a request. The Worker resolves this from the
@@ -140,9 +144,6 @@ export type AuditEvent = {
 }
 
 // ---- Messages ----
-
-export type MessageKind = "message" | "collision" | "decision"
-export type MessageStatus = "pending" | "responded" | "dismissed"
 
 export type Message = {
   id: string
