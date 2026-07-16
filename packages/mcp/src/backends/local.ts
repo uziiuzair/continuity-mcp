@@ -25,6 +25,7 @@ import {
   type DecisionWriteArgs,
   DEFAULT_DECISION_RECENT_WINDOW_S,
   DEFAULT_LIST_ACTIVE_WINDOW_S,
+  DEFAULT_MESSAGE_TIMEOUT_MIN,
   DEFAULT_RECENT_FILE_WINDOW_S,
   FILE_ACTIVITY_PRUNE_MS,
   FILE_TOOLS,
@@ -33,6 +34,10 @@ import {
   type HandoffCreateArgs,
   type HandoffPendingArgs,
   type ListActiveArgs,
+  type Message,
+  type MessageListArgs,
+  type MessageRespondArgs,
+  type MessageSendArgs,
   type RecentFileActivityArgs,
   SESSION_GONE_MS,
   type TaskClaim,
@@ -45,6 +50,7 @@ import {
   toAuditEvent,
   toDecision,
   toHandoff,
+  toMessage,
   toRecentFileActivity,
   toSessionDetail,
   toTaskClaim,
@@ -65,6 +71,9 @@ const HANDOFF_COLS =
   "id, from_agent_session_id AS fromAgentSessionId, to_agent_session_id AS toAgentSessionId, project_scope AS projectScope, context, state, suggested_next_actions AS suggestedNextActions, status, created_at AS createdAt, accepted_at AS acceptedAt, completed_at AS completedAt"
 const AUDIT_COLS =
   "id, event_type AS eventType, agent_session_id AS agentSessionId, payload, created_at AS createdAt"
+const MESSAGE_COLS =
+  "m.id, m.from_agent_session_id AS fromAgentSessionId, m.to_agent_session_id AS toAgentSessionId, m.repo_full_name AS repoFullName, m.kind, m.body, m.requires_response AS requiresResponse, m.related_key AS relatedKey, m.status, m.response, m.created_at AS createdAt, m.responded_at AS respondedAt, m.expires_at AS expiresAt, s.agent_label AS fromAgentLabel"
+const MESSAGE_JOIN = "FROM messages m LEFT JOIN agent_sessions s ON s.id = m.from_agent_session_id"
 
 type Param = string | number | null
 type Row = Record<string, any>
@@ -586,6 +595,102 @@ export class LocalBackend implements ContinuityBackend {
     if (changes === 0) throw new Error("not_found")
     this.audit("handoff.complete", null, { handoff_id: args.handoff_id, outcome: args.outcome ?? null })
     return { handoff: toHandoff(this.get(`SELECT ${HANDOFF_COLS} FROM handoffs WHERE id=?`, args.handoff_id) as never) }
+  }
+
+  // ---- Messages ----
+
+  async messageSend(args: MessageSendArgs): Promise<{ message_ids: string[]; delivered: number; expires_at: string }> {
+    this.maybeSweep()
+    if (!args.to_session && !args.broadcast) throw new Error("to_session or broadcast required")
+    const now = Date.now()
+    const timeoutMin = args.expires_in_minutes ?? DEFAULT_MESSAGE_TIMEOUT_MIN
+    const expiresAt = new Date(now + timeoutMin * 60_000).toISOString()
+    const recipients = args.broadcast
+      ? this.all(
+          "SELECT id FROM agent_sessions WHERE status <> 'gone' AND last_seen_at >= ? AND id <> ?",
+          isoFrom(DEFAULT_LIST_ACTIVE_WINDOW_S * 1000, now),
+          args.from_session,
+        ).map((r) => r.id as string)
+      : [args.to_session as string]
+    const ids: string[] = []
+    this.tx(() => {
+      for (const to of recipients) {
+        const id = randomUUID()
+        ids.push(id)
+        this.run(
+          `INSERT INTO messages (id, from_agent_session_id, to_agent_session_id, repo_full_name, kind, body, requires_response, related_key, status, created_at, expires_at)
+           VALUES (?,?,?,?,?,?,?,?,'pending',?,?)`,
+          id,
+          args.from_session,
+          to,
+          args.repo_full_name ?? null,
+          args.kind,
+          args.body,
+          args.requires_response ? 1 : 0,
+          args.related_key ?? null,
+          nowIso(),
+          expiresAt,
+        )
+      }
+    })
+    return { message_ids: ids, delivered: ids.length, expires_at: expiresAt }
+  }
+
+  async messageRespond(args: MessageRespondArgs): Promise<{ ok: boolean }> {
+    const changes = this.run(
+      "UPDATE messages SET status = ?, response = ?, responded_at = ? WHERE id = ? AND status = 'pending'",
+      args.dismiss ? "dismissed" : "responded",
+      args.response,
+      nowIso(),
+      args.message_id,
+    )
+    return { ok: changes > 0 }
+  }
+
+  async messageList(args: MessageListArgs): Promise<{ messages: Message[] }> {
+    const dirSql =
+      args.direction === "outbound"
+        ? "m.from_agent_session_id = ?"
+        : args.direction === "inbound"
+          ? "m.to_agent_session_id = ?"
+          : "(m.from_agent_session_id = ? OR m.to_agent_session_id = ?)"
+    const dirParams: Param[] = args.direction ? [args.session_id] : [args.session_id, args.session_id]
+    const statusSql = args.status ? " AND m.status = ?" : ""
+    const params: Param[] = args.status ? [...dirParams, args.status] : dirParams
+    const rows = this.all(
+      `SELECT ${MESSAGE_COLS} ${MESSAGE_JOIN} WHERE ${dirSql}${statusSql} ORDER BY m.created_at DESC LIMIT ?`,
+      ...params,
+      Math.min(args.limit ?? 50, 200),
+    )
+    return { messages: rows.map((r) => toMessage(this.withFromUserName(r) as never)) }
+  }
+
+  async messagePending(args: { session_id: string }): Promise<{ inbound: Message[]; resolved: Message[] }> {
+    const now = nowIso()
+    const inbound = this.all(
+      `SELECT ${MESSAGE_COLS} ${MESSAGE_JOIN}
+       WHERE m.to_agent_session_id = ? AND m.status = 'pending' AND m.expires_at > ?
+       ORDER BY m.created_at ASC LIMIT 20`,
+      args.session_id,
+      now,
+    )
+    const resolved = this.all(
+      `SELECT ${MESSAGE_COLS} ${MESSAGE_JOIN}
+       WHERE m.from_agent_session_id = ? AND m.status <> 'pending' AND m.responded_at > ?
+       ORDER BY m.responded_at ASC LIMIT 20`,
+      args.session_id,
+      isoFrom(30 * 60_000),
+    )
+    return {
+      inbound: inbound.map((r) => toMessage(this.withFromUserName(r) as never)),
+      resolved: resolved.map((r) => toMessage(this.withFromUserName(r) as never)),
+    }
+  }
+
+  // Local flavor has a single implicit user; stamp its name for display parity
+  // with the team flavor's join.
+  private withFromUserName(r: Row): Row {
+    return { ...r, fromUserName: this.identity.userName }
   }
 
   // ---- Audit ----

@@ -218,3 +218,92 @@ describe("file activity", () => {
     expect(recent.activity).toHaveLength(1)
   })
 })
+
+describe("messages", () => {
+  it("sends a direct message with computed expiry and lists it inbound", async () => {
+    const a = await backend.checkin({ agent_label: "a", cwd_hash: "msg-cwd-a1" })
+    const b = await backend.checkin({ agent_label: "b", cwd_hash: "msg-cwd-b1" })
+    const sent = await backend.messageSend({
+      from_session: a.session_id,
+      to_session: b.session_id,
+      kind: "message",
+      body: "which auth lib?",
+      requires_response: true,
+    })
+    expect(sent.delivered).toBe(1)
+    expect(new Date(sent.expires_at).getTime()).toBeGreaterThan(Date.now())
+    const { inbound } = await backend.messagePending({ session_id: b.session_id })
+    expect(inbound).toHaveLength(1)
+    expect(inbound[0]?.body).toBe("which auth lib?")
+    expect(inbound[0]?.requires_response).toBe(true)
+    expect(inbound[0]?.from_agent_label).toBe("a")
+    expect(inbound[0]?.from_user_name).toBeTruthy()
+  })
+
+  it("broadcast fans out to active sessions only, excluding the sender", async () => {
+    const a = await backend.checkin({ agent_label: "a2", cwd_hash: "msg-cwd-a2" })
+    const b = await backend.checkin({ agent_label: "b2", cwd_hash: "msg-cwd-b2" })
+    const c = await backend.checkin({ agent_label: "c2", cwd_hash: "msg-cwd-c2" })
+    await backend.checkout({ session_id: c.session_id })
+    const sent = await backend.messageSend({
+      from_session: a.session_id,
+      broadcast: true,
+      kind: "decision",
+      body: "ack me",
+      requires_response: true,
+    })
+    // b gets it; c is gone; a is the sender. (Other tests' sessions may also
+    // receive broadcasts if still active — count only OUR recipients.)
+    expect(sent.delivered).toBeGreaterThanOrEqual(1)
+    expect((await backend.messagePending({ session_id: b.session_id })).inbound.some((m) => m.body === "ack me")).toBe(true)
+    expect((await backend.messagePending({ session_id: c.session_id })).inbound).toHaveLength(0)
+    expect((await backend.messagePending({ session_id: a.session_id })).inbound.some((m) => m.body === "ack me")).toBe(false)
+  })
+
+  it("throws when neither to_session nor broadcast is given", async () => {
+    const a = await backend.checkin({ agent_label: "a3", cwd_hash: "msg-cwd-a3" })
+    await expect(
+      backend.messageSend({ from_session: a.session_id, kind: "message", body: "x" }),
+    ).rejects.toThrow()
+  })
+
+  it("respond and dismiss resolve a message exactly once", async () => {
+    const a = await backend.checkin({ agent_label: "a4", cwd_hash: "msg-cwd-a4" })
+    const b = await backend.checkin({ agent_label: "b4", cwd_hash: "msg-cwd-b4" })
+    const { message_ids } = await backend.messageSend({
+      from_session: a.session_id, to_session: b.session_id, kind: "message", body: "q",
+    })
+    const id = message_ids[0]!
+    expect((await backend.messageRespond({ message_id: id, response: "answer" })).ok).toBe(true)
+    expect((await backend.messageRespond({ message_id: id, response: "again" })).ok).toBe(false)
+    const { resolved } = await backend.messagePending({ session_id: a.session_id })
+    expect(resolved.some((m) => m.id === id && m.status === "responded" && m.response === "answer")).toBe(true)
+    // dismiss path
+    const { message_ids: ids2 } = await backend.messageSend({
+      from_session: a.session_id, to_session: b.session_id, kind: "message", body: "q2",
+    })
+    expect((await backend.messageRespond({ message_id: ids2[0]!, response: "not my lane", dismiss: true })).ok).toBe(true)
+    const resolved2 = (await backend.messagePending({ session_id: a.session_id })).resolved
+    expect(resolved2.some((m) => m.id === ids2[0] && m.status === "dismissed")).toBe(true)
+  })
+
+  it("expired messages drop out of pending inbound", async () => {
+    const a = await backend.checkin({ agent_label: "a5", cwd_hash: "msg-cwd-a5" })
+    const b = await backend.checkin({ agent_label: "b5", cwd_hash: "msg-cwd-b5" })
+    await backend.messageSend({
+      from_session: a.session_id, to_session: b.session_id, kind: "message",
+      body: "stale", expires_in_minutes: -1,
+    })
+    expect((await backend.messagePending({ session_id: b.session_id })).inbound).toHaveLength(0)
+  })
+
+  it("messageList filters by direction and status", async () => {
+    const a = await backend.checkin({ agent_label: "a6", cwd_hash: "msg-cwd-a6" })
+    const b = await backend.checkin({ agent_label: "b6", cwd_hash: "msg-cwd-b6" })
+    await backend.messageSend({ from_session: a.session_id, to_session: b.session_id, kind: "message", body: "one" })
+    const out = await backend.messageList({ session_id: a.session_id, direction: "outbound" })
+    expect(out.messages.some((m) => m.body === "one")).toBe(true)
+    const inbNone = await backend.messageList({ session_id: a.session_id, direction: "inbound", status: "pending" })
+    expect(inbNone.messages.some((m) => m.body === "one")).toBe(false)
+  })
+})
