@@ -151,7 +151,9 @@ pending_inbound?: PendingInboundEntry[]  // written by prompt-sync/snapshot,
                                          // pruned synchronously by respond/dismiss handlers
 collision_sent?: Record<string, { message_id: string; expires_at: string }>
                                          // stamped by message_send(kind:"collision"),
-                                         // cleared on response/expiry (prompt-sync)
+                                         // pending stamps are pruned at expiry; responded/
+                                         // dismissed stamps persist for the session (negotiated
+                                         // consent holds — the guard's allow needs the stamp)
 message_warned?: string[]                // message ids already used in a deny-once
                                          // (same pattern as collision_warned)
 // DeltaMemory gains:
