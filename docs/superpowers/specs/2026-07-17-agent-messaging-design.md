@@ -152,8 +152,11 @@ pending_inbound?: PendingInboundEntry[]  // written by prompt-sync/snapshot,
 collision_sent?: Record<string, { message_id: string; expires_at: string }>
                                          // stamped by message_send(kind:"collision"),
                                          // pending stamps are pruned at expiry; responded/
-                                         // dismissed stamps persist for the session (negotiated
-                                         // consent holds — the guard's allow needs the stamp)
+                                         // dismissed stamps persist (negotiated consent holds —
+                                         // the guard's allow needs the stamp) UNTIL contesting
+                                         // activity newer than the resolution arrives, at which
+                                         // point the sync drops the stamp and negotiation
+                                         // re-opens. Old consent must not mask a new collision.
 message_warned?: string[]                // message ids already used in a deny-once
                                          // (same pattern as collision_warned)
 // DeltaMemory gains:
