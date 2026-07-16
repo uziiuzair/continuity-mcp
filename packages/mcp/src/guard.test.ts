@@ -253,21 +253,27 @@ describe("guard v2: ack gate", () => {
   }
   it("denies once listing unanswered required items, then passes", () => {
     const d = ackGateDecision({ pendingInbound: [item], messageWarned: [], nowMs: NOW })
-    expect(d.warn).toBe(true)
-    if (d.warn) {
+    expect(d.action).toBe("deny")
+    if (d.action === "deny") {
       expect(d.reason).toContain("m1")
       expect(d.reason).toContain("message_respond")
       const again = ackGateDecision({ pendingInbound: [item], messageWarned: d.warned, nowMs: NOW })
-      expect(again.warn).toBe(false)
+      expect(again.action).toBe("allow")
     }
   })
   it("ignores expired and non-required items", () => {
     const expired = { ...item, expires_at: iso(-1000) }
     const fyi = { ...item, message_id: "m2", requires_response: false }
-    expect(ackGateDecision({ pendingInbound: [expired, fyi], messageWarned: [], nowMs: NOW }).warn).toBe(false)
+    expect(ackGateDecision({ pendingInbound: [expired, fyi], messageWarned: [], nowMs: NOW }).action).toBe("allow")
   })
   it("fails open on malformed inputs", () => {
-    expect(ackGateDecision({ pendingInbound: null, messageWarned: null, nowMs: NOW }).warn).toBe(false)
+    expect(ackGateDecision({ pendingInbound: null, messageWarned: null, nowMs: NOW }).action).toBe("allow")
+  })
+  it("caps the warned list so the state file stays bounded", () => {
+    const preWarned = Array.from({ length: 200 }, (_, i) => `w${i}`)
+    const d = ackGateDecision({ pendingInbound: [item], messageWarned: preWarned, nowMs: NOW })
+    expect(d.action).toBe("deny")
+    if (d.action === "deny") expect(d.warned?.length).toBeLessThanOrEqual(100)
   })
 })
 
@@ -294,6 +300,45 @@ describe("guard v2: stop gate", () => {
   it("mentions message_dismiss as the response-not-warranted path", () => {
     const b = stopGateDecision({ pendingInbound: [item], stopHookActive: false, nowMs: NOW })
     if (b.block) expect(b.reason).toContain("message_dismiss")
+  })
+  it("truncates the list at 5 items and says how many more remain", () => {
+    const many = Array.from({ length: 7 }, (_, i) => ({ ...item, message_id: `m${i}` }))
+    const b = stopGateDecision({ pendingInbound: many, stopHookActive: false, nowMs: NOW })
+    expect(b.block).toBe(true)
+    if (b.block) {
+      expect(b.reason).toContain("m4")
+      expect(b.reason).not.toContain("m5")
+      expect(b.reason).toContain("and 2 more")
+    }
+  })
+})
+
+describe("guard v2: expiry boundary", () => {
+  it("an item expiring exactly now unlocks every gate (timeout-override rule)", () => {
+    const atNow = iso(0)
+    const sent = { "src/app.ts": { message_id: "m1", expires_at: atNow, status: "pending" } }
+    expect(
+      collisionDecisionV2({
+        mode: "negotiate",
+        entries: [entry()],
+        relPath: "src/app.ts",
+        warned: [],
+        collisionSent: sent,
+        nowMs: NOW,
+      }).action,
+    ).toBe("allow")
+    const msg = {
+      message_id: "m1",
+      from_label: "alpha",
+      from_user: "Ann",
+      body: "ack me",
+      kind: "message",
+      related_key: null,
+      requires_response: true,
+      expires_at: atNow,
+    }
+    expect(ackGateDecision({ pendingInbound: [msg], messageWarned: [], nowMs: NOW }).action).toBe("allow")
+    expect(stopGateDecision({ pendingInbound: [msg], stopHookActive: false, nowMs: NOW }).block).toBe(false)
   })
 })
 

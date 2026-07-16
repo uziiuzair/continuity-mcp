@@ -50,6 +50,22 @@ function ago(iso: string, nowMs: number): string {
   return `${m}m ago`
 }
 
+// The shared contest predicate: another live session touched this path within
+// the activity window. Both collision guards (v1 warn-once and v2 modes) key
+// off it.
+function isContested(
+  entries: OthersActivityEntry[] | null | undefined,
+  relPath: string,
+  nowMs: number,
+  windowMs: number,
+): OthersActivityEntry | undefined {
+  return (entries ?? []).find((e) => {
+    if (!e || e.path !== relPath) return false
+    const t = new Date(e.touched_at).getTime()
+    return Number.isFinite(t) && nowMs - t >= 0 && nowMs - t <= windowMs
+  })
+}
+
 export function collisionDecision(args: {
   entries: OthersActivityEntry[] | null | undefined
   relPath: string
@@ -62,11 +78,7 @@ export function collisionDecision(args: {
   if (!Array.isArray(entries) || !relPath) return { warn: false }
   if (warned.includes(relPath)) return { warn: false }
 
-  const hit = entries.find((e) => {
-    if (!e || e.path !== relPath) return false
-    const t = new Date(e.touched_at).getTime()
-    return Number.isFinite(t) && nowMs - t >= 0 && nowMs - t <= windowMs
-  })
+  const hit = isContested(entries, relPath, nowMs, windowMs)
   if (!hit) return { warn: false }
 
   return {
@@ -92,7 +104,9 @@ export function parseGuardMode(raw: string | undefined): GuardMode {
 
 // Inbound-message cache entry the ack/stop gates read from the state file.
 // Written by --prompt-sync/--snapshot; pruned synchronously by the
-// message_respond/message_dismiss tool handlers.
+// message_respond/message_dismiss tool handlers. Flattened cache shape of a
+// shared Message (from_label/from_user = from_agent_label/from_user_name),
+// kept complete for renderers even where gates read only a subset.
 export type PendingInboundEntry = {
   message_id: string
   from_label: string
@@ -112,17 +126,11 @@ function minutesLeft(expiresAt: string, nowMs: number): number {
   return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - nowMs) / 60_000))
 }
 
-function isContested(
-  entries: OthersActivityEntry[] | null | undefined,
-  relPath: string,
-  nowMs: number,
-  windowMs: number,
-): OthersActivityEntry | undefined {
-  return (entries ?? []).find((e) => {
-    if (!e || e.path !== relPath) return false
-    const t = new Date(e.touched_at).getTime()
-    return Number.isFinite(t) && nowMs - t >= 0 && nowMs - t <= windowMs
-  })
+// Reasons list at most five items; the suffix keeps the count honest when the
+// list is truncated.
+function listWithOverflow(due: PendingInboundEntry[], render: (m: PendingInboundEntry) => string): string {
+  const shown = due.slice(0, 5).map(render).join("; ")
+  return due.length > 5 ? `${shown}; …and ${due.length - 5} more` : shown
 }
 
 // Mode-aware collision decision. warn = the original warn-once behavior;
@@ -182,7 +190,7 @@ export function ackGateDecision(args: {
   pendingInbound: PendingInboundEntry[] | null | undefined
   messageWarned: string[] | null | undefined
   nowMs: number
-}): { warn: false } | { warn: true; reason: string; warned: string[] } {
+}): GuardResult {
   const warned = Array.isArray(args.messageWarned) ? args.messageWarned : []
   const due = (args.pendingInbound ?? []).filter(
     (m) =>
@@ -190,18 +198,15 @@ export function ackGateDecision(args: {
       new Date(m.expires_at).getTime() > args.nowMs &&
       !warned.includes(m.message_id),
   )
-  if (due.length === 0) return { warn: false }
-  const list = due
-    .slice(0, 5)
-    .map((m) => `${m.message_id} from ${m.from_label}: "${m.body.slice(0, 80)}"`)
-    .join("; ")
+  if (due.length === 0) return { action: "allow" }
+  const list = listWithOverflow(due, (m) => `${m.message_id} from ${m.from_label}: "${m.body.slice(0, 80)}"`)
   return {
-    warn: true,
+    action: "deny",
     reason:
       `Continuity: ${due.length} message(s) require your response before more edits — ${list}. ` +
       `Use message_respond(id, response) or message_dismiss(id, reason); they expire on their own otherwise. ` +
       `Retry the edit to proceed.`,
-    warned: [...warned, ...due.map((m) => m.message_id)].slice(-100),
+    warned: [...warned, ...due.map((m) => m.message_id)].slice(-MAX_WARNED),
   }
 }
 
@@ -217,10 +222,10 @@ export function stopGateDecision(args: {
     (m) => m?.requires_response && new Date(m.expires_at).getTime() > args.nowMs,
   )
   if (due.length === 0) return { block: false }
-  const list = due
-    .slice(0, 5)
-    .map((m) => `message_respond("${m.message_id}", …) — from ${m.from_label}: "${m.body.slice(0, 80)}"`)
-    .join("; ")
+  const list = listWithOverflow(
+    due,
+    (m) => `message_respond("${m.message_id}", …) — from ${m.from_label}: "${m.body.slice(0, 80)}"`,
+  )
   return {
     block: true,
     reason: `Continuity: before ending the turn, answer or dismiss pending message(s): ${list}. Use message_dismiss(id, reason) if a response isn't warranted.`,
