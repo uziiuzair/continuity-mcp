@@ -28,10 +28,16 @@
       "description": "Where the local SQLite file lives. Defaults to ~/.continuity/continuity.db. Ignored in team mode."
     },
     "collisionGuard": {
-      "type": "boolean",
-      "title": "Collision guard (default on)",
-      "description": "Before an edit, warn the agent once when another live session touched the same file recently. The agent can retry to proceed. Set to false to disable.",
-      "default": true
+      "type": "string",
+      "title": "Collision guard mode",
+      "description": "negotiate (default): contested edits are blocked until you message the other session and they respond, or the block times out. warn: single warning, retry proceeds. off: disabled. Legacy true/false map to negotiate/off.",
+      "default": "negotiate"
+    },
+    "messageTimeoutMinutes": {
+      "type": "number",
+      "title": "Message / block timeout (minutes)",
+      "description": "How long messages and enforcement blocks live before expiring (the no-deadlock rule). Default 10.",
+      "default": 10
     }
   }
 }

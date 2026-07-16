@@ -164,6 +164,21 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/stop.mjs"],
+            "timeout": 5,
+            "env": {
+              "CONTINUITY_REPO_ALLOWLIST": "${user_config.repoAllowlist}"
+            }
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit",
