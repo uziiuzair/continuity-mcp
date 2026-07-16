@@ -22,6 +22,10 @@ import type {
   HandoffCreateArgs,
   HandoffPendingArgs,
   ListActiveArgs,
+  Message,
+  MessageListArgs,
+  MessageRespondArgs,
+  MessageSendArgs,
   RecentFileActivity,
   RecentFileActivityArgs,
   SessionDetail,
@@ -179,6 +183,24 @@ export class RemoteBackend implements ContinuityBackend, TeamBackend {
 
   handoffComplete(args: { handoff_id: string; outcome?: string }): Promise<{ handoff: Handoff }> {
     return this.post("/handoffs/complete", args)
+  }
+
+  // ---- Messages ----
+
+  messageSend(args: MessageSendArgs): Promise<{ message_ids: string[]; delivered: number; expires_at: string }> {
+    return this.post("/messages/send", args)
+  }
+
+  messageRespond(args: MessageRespondArgs): Promise<{ ok: boolean }> {
+    return this.post("/messages/respond", args)
+  }
+
+  messageList(args: MessageListArgs): Promise<{ messages: Message[] }> {
+    return this.get("/messages/list", args)
+  }
+
+  messagePending(args: { session_id: string }): Promise<{ inbound: Message[]; resolved: Message[] }> {
+    return this.get("/messages/pending", args)
   }
 
   // ---- Audit ----
