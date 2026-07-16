@@ -228,13 +228,14 @@ describe("computeDeltas: messages", () => {
     const first = computeDeltas(seeded, data, NOW)
     expect(first.text).toContain("Response received")
     expect(first.text).toContain("use better-auth")
+    expect(first.text).not.toContain("alpha")
     expect(computeDeltas(first.memory, data, NOW).text).toBeNull()
   })
   it("marks dismissals and collision context on resolved lines", () => {
     const seeded = computeDeltas(null, empty, NOW).memory
     const dismissed = message({ id: "m10", kind: "collision", related_key: "src/db.ts", status: "dismissed", response: "mid-refactor here, hold off", responded_at: iso(-1000) })
     const { text } = computeDeltas(seeded, { ...empty, messages: { inbound: [], resolved: [dismissed] } }, NOW)
-    expect(text).toContain("dismissed")
+    expect(text).toContain("Your message was dismissed")
     expect(text).toContain("src/db.ts")
     expect(text).toContain("hold off")
   })

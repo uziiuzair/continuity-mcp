@@ -153,7 +153,7 @@ export function computeDeltas(
     }
   }
   for (const m of newResolved.slice(0, 5)) {
-    const verb = m.status === "dismissed" ? "dismissed" : "Response received"
+    const verb = m.status === "dismissed" ? "Your message was dismissed" : "Response received"
     const re = m.kind === "collision" && m.related_key ? ` (re: your collision message on ${m.related_key})` : ""
     lines.push(`- ${verb}: "${oneLine(m.response ?? "")}"${re}`)
   }
