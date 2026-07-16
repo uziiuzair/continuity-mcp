@@ -14,6 +14,7 @@
 //
 // Fail-open everywhere.
 import { repoRelative } from "./lib/common.mjs"
+import { collisionGuardFromEnv, repoAllowlistFromEnv } from "./lib/env.mjs"
 import { resolveRepoContext } from "./lib/gate.mjs"
 import { ackGateDecision, collisionDecisionV2, parseGuardMode } from "./lib/guard.mjs"
 import { readState, writeState } from "./lib/state.mjs"
@@ -38,16 +39,8 @@ async function main() {
   const cwd = input.cwd || process.cwd()
   if (!ALLOWED.has(input.tool_name) || !input.tool_input?.file_path) return
 
-  const mode = parseGuardMode(
-    process.env.CONTINUITY_COLLISION_GUARD ??
-      process.env.CLAUDE_PLUGIN_OPTION_COLLISIONGUARD ??
-      process.env.CLAUDE_PLUGIN_OPTION_COLLISION_GUARD,
-  )
-  const allowlist =
-    process.env.CONTINUITY_REPO_ALLOWLIST ??
-    process.env.CLAUDE_PLUGIN_OPTION_REPOALLOWLIST ??
-    process.env.CLAUDE_PLUGIN_OPTION_REPO_ALLOWLIST
-  const repo = resolveRepoContext(cwd, allowlist)
+  const mode = parseGuardMode(collisionGuardFromEnv())
+  const repo = resolveRepoContext(cwd, repoAllowlistFromEnv())
   if (!repo) return
 
   const rel = repoRelative(repo.toplevel, input.tool_input.file_path)
@@ -66,6 +59,7 @@ async function main() {
       nowMs,
     })
     if (collision.action === "deny") {
+      // read-modify-write without a lock: a concurrent shim sync landing in this window is clobbered and self-heals next sync (accepted idiom, see persistCoordinationCaches)
       if (collision.warned && state) writeState(repo.cwdHash, { ...state, collision_warned: collision.warned })
       return deny(collision.reason)
     }
@@ -79,6 +73,7 @@ async function main() {
     nowMs,
   })
   if (ack.action === "deny") {
+    // read-modify-write without a lock: a concurrent shim sync landing in this window is clobbered and self-heals next sync (accepted idiom, see persistCoordinationCaches)
     if (ack.warned && state) writeState(repo.cwdHash, { ...state, message_warned: ack.warned })
     return deny(ack.reason)
   }

@@ -30,13 +30,13 @@
     "collisionGuard": {
       "type": "string",
       "title": "Collision guard mode",
-      "description": "negotiate (default): contested edits are blocked until you message the other session and they respond, or the block times out. warn: single warning, retry proceeds. off: disabled. Legacy true/false map to negotiate/off.",
+      "description": "negotiate (default): when another live session recently edited the same file, the agent must message that session and get a response (or wait out the timeout) before editing. warn: one warning, then the retry proceeds. off: no collision blocking. Legacy true/false map to negotiate/off.",
       "default": "negotiate"
     },
     "messageTimeoutMinutes": {
       "type": "number",
       "title": "Message / block timeout (minutes)",
-      "description": "How long messages and enforcement blocks live before expiring (the no-deadlock rule). Default 10.",
+      "description": "How long messages and edit blocks live before expiring on their own, in minutes. Expiry guarantees a silent teammate can never block you indefinitely. Default 10.",
       "default": 10
     }
   }

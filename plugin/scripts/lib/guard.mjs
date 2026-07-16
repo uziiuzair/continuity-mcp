@@ -58,8 +58,8 @@ export function parseGuardMode(raw) {
   return "negotiate"
 }
 
-// Shared with deltas.ts for expiry countdowns. NaN-safe: a malformed
-// timestamp renders as 0 rather than "NaNm".
+// Mirror of guard.ts's minutesLeft (which is shared with the shim's delta
+// renderer). NaN-safe: malformed timestamps render as 0.
 export function minutesLeft(expiresAt, nowMs) {
   const mins = Math.ceil((new Date(expiresAt).getTime() - nowMs) / 60_000)
   return Number.isFinite(mins) ? Math.max(0, mins) : 0
