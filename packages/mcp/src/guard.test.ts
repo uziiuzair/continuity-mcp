@@ -194,18 +194,31 @@ describe("guard v2: collision negotiation", () => {
       }).action,
     ).toBe("allow")
   })
-  it("negotiate: dismissed collision message re-prompts a fresh message_send", () => {
+  it("negotiate: dismissed collision message resolves the gate (allow)", () => {
     const dismissed = { "src/app.ts": { message_id: "m1", expires_at: iso(5 * 60_000), status: "dismissed" } }
-    const d = collisionDecisionV2({
-      mode: "negotiate",
-      entries: contested,
-      relPath: "src/app.ts",
-      warned: [],
-      collisionSent: dismissed,
-      nowMs: NOW,
-    })
-    expect(d.action).toBe("deny")
-    if (d.action === "deny") expect(d.reason).toContain("message_send")
+    expect(
+      collisionDecisionV2({
+        mode: "negotiate",
+        entries: contested,
+        relPath: "src/app.ts",
+        warned: [],
+        collisionSent: dismissed,
+        nowMs: NOW,
+      }).action,
+    ).toBe("allow")
+  })
+  it("negotiate: fails open on malformed expires_at in a pending entry", () => {
+    const bad = { "src/app.ts": { message_id: "m1", expires_at: "not-a-date", status: "pending" } }
+    expect(
+      collisionDecisionV2({
+        mode: "negotiate",
+        entries: contested,
+        relPath: "src/app.ts",
+        warned: [],
+        collisionSent: bad,
+        nowMs: NOW,
+      }).action,
+    ).toBe("allow")
   })
   it("negotiate: uncontested path allows regardless of collisionSent", () => {
     expect(

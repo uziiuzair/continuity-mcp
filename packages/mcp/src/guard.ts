@@ -152,7 +152,7 @@ export function collisionDecisionV2(args: {
   if (!other) return { action: "allow" }
 
   const sent = args.collisionSent?.[relPath]
-  if (!sent || sent.status === "dismissed") {
+  if (!sent) {
     return {
       action: "deny",
       reason:
@@ -161,8 +161,13 @@ export function collisionDecisionV2(args: {
         `The block lifts when they respond, or expires on its own — pick other work meanwhile.`,
     }
   }
-  if (sent.status !== "pending") return { action: "allow" } // responded
-  if (new Date(sent.expires_at).getTime() <= nowMs) return { action: "allow" } // timeout override
+  // Responded and dismissed both resolve the gate — the resolution text reaches
+  // the sender via prompt-sync, so proceeding is informed, not blind.
+  if (sent.status !== "pending") return { action: "allow" }
+  const expiresMs = new Date(sent.expires_at).getTime()
+  // Timeout override (and fail-open on malformed timestamps): a block must
+  // never outlive its window.
+  if (!Number.isFinite(expiresMs) || expiresMs <= nowMs) return { action: "allow" }
   return {
     action: "deny",
     reason:

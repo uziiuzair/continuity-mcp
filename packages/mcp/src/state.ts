@@ -3,7 +3,7 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
 import type { DeltaMemory } from "./deltas.js"
-import type { OthersActivityEntry, PendingInboundEntry } from "./guard.js"
+import type { CollisionSentMap, OthersActivityEntry, PendingInboundEntry } from "./guard.js"
 
 // Shared session state, written by whichever process (SessionStart hook or this
 // shim) checks in first and read by both so they converge on one session_id.
@@ -25,7 +25,7 @@ export type SessionState = {
   others_activity?: OthersActivityEntry[] | null
   collision_warned?: string[] | null
   pending_inbound?: PendingInboundEntry[] | null
-  collision_sent?: Record<string, { message_id: string; expires_at: string; status: string }> | null
+  collision_sent?: CollisionSentMap | null
   message_warned?: string[] | null
 }
 
