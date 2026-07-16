@@ -86,8 +86,8 @@ the delta high-water-mark convention.
 ```ts
 messageSend(args: { from_session: string; to_session?: string; broadcast?: boolean;
   kind: MessageKind; body: string; requires_response?: boolean;
-  related_key?: string; repo_full_name?: string })
-  : Promise<{ message_ids: string[]; delivered: number }>
+  related_key?: string; repo_full_name?: string; expires_in_minutes?: number })
+  : Promise<{ message_ids: string[]; delivered: number; expires_at: string }>
 messageRespond(args: { message_id: string; response: string; dismiss?: boolean })
   : Promise<{ ok: boolean }>
 messageList(args: { session_id: string; direction?: "inbound" | "outbound";
@@ -135,7 +135,9 @@ announce-once rules, ids recorded in `DeltaMemory.known_messages`):
 - `- alpha (Ann) responded: "…" (re: your collision on src/db.ts)`
 - `- alpha dismissed your message: "…"`
 - `- Decision [orm] requires your ack → message_respond(<id>)`
-- `- Your collision message on src/db.ts expired unanswered — file unblocked; proceeding is recorded.`
+(Expiry of your own collision message is not separately announced — the guard's
+deny text already states the block lifts automatically on expiry, and the edit
+simply proceeds once it has.)
 
 The SessionStart snapshot gains a `### Pending messages for you` section
 (mirrors handoffs). Prompt-sync also refreshes the state-file caches that gates
@@ -153,7 +155,8 @@ collision_sent?: Record<string, { message_id: string; expires_at: string }>
 message_warned?: string[]                // message ids already used in a deny-once
                                          // (same pattern as collision_warned)
 // DeltaMemory gains:
-known_messages: string[]                 // announce-once, capped like the others
+known_inbound: string[]                  // announce-once for inbound messages
+known_resolved: string[]                 // announce-once for resolutions of my outbound
 ```
 
 ## Gates
