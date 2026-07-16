@@ -21,6 +21,39 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
   into one shared identity. It folds into the `cwd_hash` derivation alongside the git
   toplevel; `repoFullName` is unaffected. Unset (the default) leaves the existing
   one-identity-per-checkout behavior unchanged.
+- **Direct messages between sessions** (`message_send` / `message_list` /
+  `message_respond` / `message_dismiss`): delivery via prompt-sync injection on the
+  recipient's next prompt, with broadcast fan-out to all active sessions and
+  timeout-expiring requests (default 10m, configurable with the
+  `messageTimeoutMinutes` option). Team-mode note: the Worker routes are a
+  follow-up — the tools 404 loudly against a team server until then.
+- **Collision negotiation** (new default `collisionGuard: negotiate`). A contested
+  edit is now blocked until the other session responds to a
+  `message_send(about_file: …)` coordination request or the block expires on its
+  own; `warn` keeps the old warn-once behavior, and `off` disables the guard
+  entirely. Legacy boolean `collisionGuard` configs map onto the new modes.
+  Consent lapses automatically when newer contesting activity arrives on the same
+  file, so a stale "go ahead" can never mask a fresh collision.
+- **Reply enforcement.** A response-required message denies the next edit once
+  (`PreToolUse`) and blocks turn-end (new `Stop` hook, honoring `stop_hook_active`)
+  until it's answered, dismissed, or expires — the timeout-override rule means a
+  block can never outlive its own deadline.
+- **`decision_write requires_ack`** fans out ack-request messages to all active
+  sessions.
+- **ts↔mjs mirror parity enforced in CI.** New `guard.parity.test.ts` and
+  `gate.parity.test.ts` drive both the TypeScript source and the hand-maintained
+  plain-ESM mirrors the plugin hooks run (`guard.mjs`, `gate.mjs`) through
+  identical inputs and assert deep-equal outputs, so a source change that isn't
+  mirrored fails CI immediately instead of silently drifting.
+
+### Fixed
+
+- **`gate.mjs` cwd-hash drift.** The `CONTINUITY_SESSION_ID` salt landed in
+  `gate.ts` (the shim) but was missed in its plain-ESM mirror, `gate.mjs` (the
+  hooks), for a few commits — whenever the override was set, the shim and hooks
+  computed different `cwd_hash` values, so the hooks would read the wrong
+  session state file and every gate would silently fail open. Fixed, and now
+  covered by `gate.parity.test.ts`.
 
 ## [0.1.0-alpha.2] - 2026-07-16
 
