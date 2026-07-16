@@ -167,11 +167,11 @@ export const messages = sqliteTable(
     fromAgentSessionId: text("from_agent_session_id").notNull(),
     toAgentSessionId: text("to_agent_session_id").notNull(),
     repoFullName: text("repo_full_name"),
-    kind: text("kind", { enum: ["message", "collision", "decision"] }).notNull(),
+    kind: text("kind", { enum: [...MESSAGE_KINDS] }).notNull(), // MESSAGE_KINDS from @continuity/shared constants — do not re-hardcode
     body: text("body").notNull(),
     requiresResponse: integer("requires_response").notNull().default(0),
     relatedKey: text("related_key"),
-    status: text("status", { enum: ["pending", "responded", "dismissed"] })
+    status: text("status", { enum: [...MESSAGE_STATUSES] }) // MESSAGE_STATUSES from constants — do not re-hardcode
       .notNull()
       .default("pending"),
     response: text("response"),
@@ -844,7 +844,7 @@ export function registerMessageTools(server: McpServer, ctx: ToolContext): void 
       description: "Inbox/outbox for this session, optionally filtered by direction or status.",
       inputSchema: {
         direction: z.enum(["inbound", "outbound"]).optional(),
-        status: z.enum(["pending", "responded", "dismissed"]).optional(),
+        status: z.enum(MESSAGE_STATUSES).optional(), // tuple from @continuity/shared
         limit: z.number().optional(),
       },
     },
