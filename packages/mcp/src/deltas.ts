@@ -5,6 +5,7 @@
 // baseline survives across the short-lived hook processes.
 
 import type { ActiveSession, Decision, Handoff, Message, RecentFileActivity } from "@continuity/shared"
+import { minutesLeft } from "./guard.js"
 
 // Bounded so the state file can't grow without limit. Sessions/decisions/
 // handoffs are tracked by id (announce-once, even if they drop out of the
@@ -144,12 +145,12 @@ export function computeDeltas(
   for (const m of newInbound.slice(0, 5)) {
     const who = `${m.from_agent_label ?? "another session"} (${m.from_user_name ?? "?"})`
     if (m.kind === "decision") {
-      lines.push(`- Decision [${m.related_key}] requires your ack → message_respond(${m.id})`)
+      lines.push(`- Decision [${m.related_key ?? "?"}] requires your ack → message_respond(${m.id}, "<ack>")`)
     } else {
       const req = m.requires_response
-        ? ` [response required, expires in ${Math.max(1, Math.ceil((new Date(m.expires_at).getTime() - nowMs) / 60_000))}m]`
+        ? ` [response required, expires in ${Math.max(1, minutesLeft(m.expires_at, nowMs))}m]`
         : ""
-      lines.push(`- Message from ${who}: "${oneLine(m.body)}" → respond via message_respond(${m.id})${req}`)
+      lines.push(`- Message from ${who}: "${oneLine(m.body)}" → respond via message_respond(${m.id}, "<reply>")${req}`)
     }
   }
   for (const m of newResolved.slice(0, 5)) {

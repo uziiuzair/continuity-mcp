@@ -122,8 +122,11 @@ export type CollisionSentMap = Record<string, { message_id: string; expires_at: 
 
 export type GuardResult = { action: "allow" } | { action: "deny"; reason: string; warned?: string[] }
 
-function minutesLeft(expiresAt: string, nowMs: number): number {
-  return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - nowMs) / 60_000))
+// Shared with deltas.ts for expiry countdowns. NaN-safe: a malformed
+// timestamp renders as 0 rather than "NaNm".
+export function minutesLeft(expiresAt: string, nowMs: number): number {
+  const mins = Math.ceil((new Date(expiresAt).getTime() - nowMs) / 60_000)
+  return Number.isFinite(mins) ? Math.max(0, mins) : 0
 }
 
 // Reasons list at most five items; the suffix keeps the count honest when the

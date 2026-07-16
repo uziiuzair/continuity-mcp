@@ -202,7 +202,7 @@ describe("computeDeltas: messages", () => {
     const data = { ...empty, messages: { inbound: [message()], resolved: [] } }
     const first = computeDeltas(seeded, data, NOW)
     expect(first.text).toContain("alpha (Ann)")
-    expect(first.text).toContain("message_respond(m1)")
+    expect(first.text).toContain('message_respond(m1, ')
     expect(first.text).toContain("response required")
     expect(first.text).toContain("8m")
     expect(computeDeltas(first.memory, data, NOW).text).toBeNull()
@@ -254,6 +254,6 @@ describe("computeDeltas: messages", () => {
     const data = { ...empty, messages: { inbound: [message()], resolved: [] } }
     expect(() => computeDeltas(oldMemory, data, NOW)).not.toThrow()
     const { text } = computeDeltas(oldMemory, data, NOW)
-    expect(text).toContain("message_respond(m1)")
+    expect(text).toContain('message_respond(m1, ')
   })
 })
