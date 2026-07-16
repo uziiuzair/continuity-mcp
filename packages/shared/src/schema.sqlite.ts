@@ -298,6 +298,7 @@ CREATE TABLE IF NOT EXISTS messages (
   from_agent_session_id TEXT NOT NULL,
   to_agent_session_id TEXT NOT NULL,
   repo_full_name TEXT,
+  -- CHECK lists must stay in sync with MESSAGE_KINDS / MESSAGE_STATUSES in constants.ts
   kind TEXT NOT NULL CHECK (kind IN ('message','collision','decision')),
   body TEXT NOT NULL,
   requires_response INTEGER NOT NULL DEFAULT 0,
