@@ -2,14 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { MESSAGE_STATUSES } from "@continuity/shared"
 import { z } from "zod"
 import { readState, writeState } from "../state.js"
-import { type ToolContext, asText } from "./util.js"
-
-// The message/enforcement-block lifetime, configurable via the plugin's
-// messageTimeoutMinutes option (threaded through the MCP server env).
-function timeoutMinutes(): number | undefined {
-  const raw = Number(process.env.CONTINUITY_MESSAGE_TIMEOUT_MIN)
-  return Number.isFinite(raw) && raw > 0 ? raw : undefined
-}
+import { type ToolContext, asText, messageTimeoutMinutes } from "./util.js"
 
 // Direct messages between sessions. Sending with about_file marks collision
 // coordination and stamps the state file so the PreToolUse guard tracks it;
@@ -21,7 +14,7 @@ export function registerMessageTools(server: McpServer, ctx: ToolContext): void 
     {
       title: "Send a message to another session",
       description:
-        "Message another live session (to_session) or broadcast to all. Set about_file (repo-relative path) when coordinating a file collision — the edit block on that file lifts when they respond or the message expires. Delivery: the recipient sees it on their next prompt.",
+        "Message another live session (to_session) or broadcast to all. Set about_file (repo-relative path) when coordinating a file collision — the edit block on that file lifts when they respond or the message expires. Delivery: the recipient sees it on their next prompt. Provide exactly one of to_session or broadcast.",
       inputSchema: {
         to_session: z.string().optional(),
         broadcast: z.boolean().optional(),
@@ -33,6 +26,7 @@ export function registerMessageTools(server: McpServer, ctx: ToolContext): void 
     async (args) => {
       const from = ctx.getSessionId()
       if (!from) return asText({ ok: false, reason: "no_active_session" })
+      // truthiness XOR: exactly one of to_session/broadcast ("" and false both read as unset)
       if (!args.to_session === !args.broadcast)
         return asText({ ok: false, reason: "exactly one of to_session / broadcast required" })
       const result = await ctx.backend.messageSend({
@@ -44,7 +38,7 @@ export function registerMessageTools(server: McpServer, ctx: ToolContext): void 
         requires_response: args.about_file ? true : (args.requires_response ?? false),
         related_key: args.about_file ?? null,
         repo_full_name: ctx.repoFullName,
-        expires_in_minutes: timeoutMinutes(),
+        expires_in_minutes: messageTimeoutMinutes(),
       })
       if (args.about_file && result.message_ids[0]) {
         const state = readState(ctx.cwdHash)

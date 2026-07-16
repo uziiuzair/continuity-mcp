@@ -27,3 +27,11 @@ export type TeamToolContext = {
 export const asText = (data: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
 })
+
+// The message/enforcement-block lifetime, configurable via the plugin's
+// messageTimeoutMinutes option (threaded through the MCP server env).
+// Finite-positive only: anything else falls back to the backend default.
+export function messageTimeoutMinutes(): number | undefined {
+  const raw = Number(process.env.CONTINUITY_MESSAGE_TIMEOUT_MIN)
+  return Number.isFinite(raw) && raw > 0 ? raw : undefined
+}

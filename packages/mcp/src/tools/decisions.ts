@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
-import { type ToolContext, asText } from "./util.js"
+import { type ToolContext, asText, messageTimeoutMinutes } from "./util.js"
 
 // Typed shared decisions. Writing a decision under a key that already has an
 // active decision returns a conflict (surfaced here, not thrown) so the agent
@@ -39,10 +39,7 @@ export function registerDecisionTools(server: McpServer, ctx: ToolContext): void
               requires_response: true,
               related_key: args.decision_key,
               repo_full_name: ctx.repoFullName,
-              expires_in_minutes:
-                Number(process.env.CONTINUITY_MESSAGE_TIMEOUT_MIN) > 0
-                  ? Number(process.env.CONTINUITY_MESSAGE_TIMEOUT_MIN)
-                  : undefined,
+              expires_in_minutes: messageTimeoutMinutes(),
             })
             .catch(() => {}) // ack fan-out is best-effort; the decision itself is written
         }
