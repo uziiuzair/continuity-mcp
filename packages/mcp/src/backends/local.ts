@@ -604,6 +604,7 @@ export class LocalBackend implements ContinuityBackend {
     if (!args.to_session && !args.broadcast) throw new Error("to_session or broadcast required")
     const now = Date.now()
     const timeoutMin = args.expires_in_minutes ?? DEFAULT_MESSAGE_TIMEOUT_MIN
+    const createdAt = new Date(now).toISOString()
     const expiresAt = new Date(now + timeoutMin * 60_000).toISOString()
     const recipients = args.broadcast
       ? this.all(
@@ -628,7 +629,7 @@ export class LocalBackend implements ContinuityBackend {
           args.body,
           args.requires_response ? 1 : 0,
           args.related_key ?? null,
-          nowIso(),
+          createdAt,
           expiresAt,
         )
       }
@@ -660,7 +661,7 @@ export class LocalBackend implements ContinuityBackend {
     const rows = this.all(
       `SELECT ${MESSAGE_COLS} ${MESSAGE_JOIN} WHERE ${dirSql}${statusSql} ORDER BY m.created_at DESC LIMIT ?`,
       ...params,
-      Math.min(args.limit ?? 50, 200),
+      Math.min(args.limit && args.limit > 0 ? args.limit : 50, 200),
     )
     return { messages: rows.map((r) => toMessage(this.withFromUserName(r) as never)) }
   }

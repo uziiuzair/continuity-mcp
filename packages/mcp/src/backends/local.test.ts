@@ -252,9 +252,8 @@ describe("messages", () => {
       body: "ack me",
       requires_response: true,
     })
-    // b gets it; c is gone; a is the sender. (Other tests' sessions may also
-    // receive broadcasts if still active — count only OUR recipients.)
-    expect(sent.delivered).toBeGreaterThanOrEqual(1)
+    // b gets it; c is gone; a is the sender.
+    expect(sent.delivered).toBe(1)
     expect((await backend.messagePending({ session_id: b.session_id })).inbound.some((m) => m.body === "ack me")).toBe(true)
     expect((await backend.messagePending({ session_id: c.session_id })).inbound).toHaveLength(0)
     expect((await backend.messagePending({ session_id: a.session_id })).inbound.some((m) => m.body === "ack me")).toBe(false)
