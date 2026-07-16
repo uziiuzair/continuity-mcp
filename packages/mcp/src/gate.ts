@@ -80,9 +80,13 @@ export function resolveRepoContext(dir: string, allowlistRaw: string | undefined
   const slash = normalized ? normalized.indexOf("/") : -1
   const repoFullName = normalized && slash >= 0 ? normalized.slice(slash + 1) : null
 
+  const sessionSalt = process.env.CONTINUITY_SESSION_ID
+  const hashInput = sessionSalt ? `${toplevel} ${sessionSalt}` : toplevel
+  const cwdHash = createHash("sha256").update(hashInput).digest("hex").slice(0, 16)
+
   return {
     toplevel,
     repoFullName,
-    cwdHash: createHash("sha256").update(toplevel).digest("hex").slice(0, 16),
+    cwdHash,
   }
 }
