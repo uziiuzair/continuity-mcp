@@ -11,22 +11,44 @@ export function registerDecisionTools(server: McpServer, ctx: ToolContext): void
     {
       title: "Record a shared decision",
       description:
-        "Record a decision other sessions must respect (architecture, tooling, process, scope). If an active decision already exists under the same key you'll get a conflict — resolve it by superseding or backing off. Use this whenever you make a call others must follow.",
+        "Record a decision other sessions must respect (architecture, tooling, process, scope). If an active decision already exists under the same key you'll get a conflict — resolve it by superseding or backing off. Use this whenever you make a call others must follow. Set requires_ack to demand acknowledgment from all active sessions.",
       inputSchema: {
         decision_key: z.string().describe("Stable topic key, e.g. 'auth.session-store'."),
         content: z.string(),
         decision_type: z.enum(["architecture", "tooling", "process", "scope", "other"]).optional(),
         project_scope: z.string().optional(),
         supersedes: z.string().optional().describe("Decision id this replaces (resolves a conflict)."),
+        requires_ack: z.boolean().optional(),
       },
     },
-    async (args) =>
-      asText(
-        await ctx.backend.decisionWrite({
-          ...args,
-          author_agent_session_id: ctx.getSessionId() ?? undefined,
-        }),
-      ),
+    async (args) => {
+      const { requires_ack, ...writeArgs } = args
+      const res = await ctx.backend.decisionWrite({
+        ...writeArgs,
+        author_agent_session_id: ctx.getSessionId() ?? undefined,
+      })
+      if (requires_ack && !res.conflict) {
+        const from = ctx.getSessionId()
+        if (from) {
+          await ctx.backend
+            .messageSend({
+              from_session: from,
+              broadcast: true,
+              kind: "decision",
+              body: `Decision [${args.decision_key}]: ${args.content}`,
+              requires_response: true,
+              related_key: args.decision_key,
+              repo_full_name: ctx.repoFullName,
+              expires_in_minutes:
+                Number(process.env.CONTINUITY_MESSAGE_TIMEOUT_MIN) > 0
+                  ? Number(process.env.CONTINUITY_MESSAGE_TIMEOUT_MIN)
+                  : undefined,
+            })
+            .catch(() => {}) // ack fan-out is best-effort; the decision itself is written
+        }
+      }
+      return asText(res)
+    },
   )
 
   server.registerTool(

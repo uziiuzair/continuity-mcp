@@ -20,6 +20,7 @@ import { registerAgentTools } from "./tools/agent.js"
 import { registerDecisionTools } from "./tools/decisions.js"
 import { registerGithubTools } from "./tools/github.js"
 import { registerHandoffTools } from "./tools/handoffs.js"
+import { registerMessageTools } from "./tools/messages.js"
 import { registerPlanTools } from "./tools/plan.js"
 import { registerTaskTools } from "./tools/tasks.js"
 import type { TeamToolContext, ToolContext } from "./tools/util.js"
@@ -297,11 +298,12 @@ async function runServer(rt: Runtime): Promise<void> {
     // Fail-open: serve tools even if the backend is unreachable at startup.
   }
 
-  const toolContext: ToolContext = { backend, getSessionId: () => sessionId, repoFullName, mode }
+  const toolContext: ToolContext = { backend, getSessionId: () => sessionId, repoFullName, mode, cwdHash }
   registerAgentTools(server, toolContext)
   registerDecisionTools(server, toolContext)
   registerTaskTools(server, toolContext)
   registerHandoffTools(server, toolContext)
+  registerMessageTools(server, toolContext)
 
   // Team-flavor extras (github_*, plan_*, escalate). These proxy to the
   // Cloudflare Worker via the TeamBackend surface that only RemoteBackend

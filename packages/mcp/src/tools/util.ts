@@ -10,6 +10,9 @@ export type ToolContext = {
   getSessionId: () => string | null
   repoFullName: string | null
   mode: "local" | "remote"
+  // Handlers use this to read/write the session state file's gate caches
+  // (pending_inbound, collision_sent) synchronously, in-process.
+  cwdHash: string
 }
 
 // Context for the team-flavor-only tools (github_*, plan_*, escalate). These
