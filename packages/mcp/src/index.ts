@@ -13,7 +13,7 @@ import { RemoteBackend } from "./backends/remote.js"
 import { type DeltaMemory, type SnapshotData, computeDeltas } from "./deltas.js"
 import { type SettingsLike, duplicateInstallWarning, listContinuityInstalls } from "./doctor.js"
 import { type RepoContext, resolveRepoContext } from "./gate.js"
-import { buildOthersCache } from "./guard.js"
+import { type CollisionSentMap, type PendingInboundEntry, buildOthersCache } from "./guard.js"
 import { renderSnapshot } from "./snapshot.js"
 import { type SessionState, clearState, readState, stateFilePath, writeState } from "./state.js"
 import { registerAgentTools } from "./tools/agent.js"
@@ -76,27 +76,32 @@ function persistSessionId(cwdHash: string, sessionId: string, agentLabel: string
   })
 }
 
-// The four coordination queries the snapshot and the prompt-sync deltas share.
+// The five coordination queries the snapshot and the prompt-sync deltas share.
 async function fetchCoordinationData(rt: Runtime, sessionIdOrNull: string | null): Promise<SnapshotData> {
   const { backend, repo } = rt
   const sessionId = sessionIdOrNull ?? undefined
-  const [active, activity, decisions, handoffs] = await Promise.all([
+  const [active, activity, decisions, handoffs, messages] = await Promise.all([
     backend.listActive({ max_age_seconds: 300, exclude_session: sessionId }).then((r) => r.sessions).catch(() => []),
     backend.recentFileActivity({ since_seconds: 1800, exclude_session: sessionId }).then((r) => r.activity).catch(() => []),
     backend.decisionRecent({ limit: 5 }).then((r) => r.decisions).catch(() => []),
     backend.handoffPending({ agent_session_id: sessionId }).then((r) => r.handoffs).catch(() => []),
+    sessionId
+      ? backend.messagePending({ session_id: sessionId }).catch(() => ({ inbound: [], resolved: [] }))
+      : Promise.resolve({ inbound: [], resolved: [] }),
   ])
   return {
     active,
     activity,
     decisions,
     handoffs,
-    messages: { inbound: [], resolved: [] }, // Task 8 wires the real messagePending fetch
+    messages,
     repoFullName: repo.repoFullName,
   }
 }
 
-// Persist the delta baseline + the collision guard's others-activity cache.
+// Persist the delta baseline + the collision guard's others-activity cache,
+// the inbound-message cache the ack/stop gates read, and the collision_sent
+// map reconciled against fresh resolutions and expiry.
 function persistCoordinationCaches(cwdHash: string, data: SnapshotData, memory: DeltaMemory): void {
   const latest: SessionState = readState(cwdHash) ?? {
     session_id: null,
@@ -105,11 +110,42 @@ function persistCoordinationCaches(cwdHash: string, data: SnapshotData, memory: 
     pending_files: [],
     last_file_report_at: null,
   }
+
+  const pendingInbound: PendingInboundEntry[] = data.messages.inbound.map((m) => ({
+    message_id: m.id,
+    from_label: m.from_agent_label ?? "session",
+    from_user: m.from_user_name ?? "?",
+    body: m.body.slice(0, 140),
+    kind: m.kind,
+    related_key: m.related_key,
+    requires_response: m.requires_response,
+    expires_at: m.expires_at,
+  }))
+
+  // Reconcile collision_sent with resolutions and expiry so the guard unlocks:
+  // responded/dismissed rows update the stamp's status; expired-unanswered
+  // pending stamps are dropped (the guard already allows past expiry — this
+  // just keeps the map from accumulating).
+  const collisionSent: CollisionSentMap = { ...(latest.collision_sent ?? {}) }
+  for (const m of data.messages.resolved) {
+    if (m.kind === "collision" && m.related_key && collisionSent[m.related_key]?.message_id === m.id) {
+      collisionSent[m.related_key] = { ...collisionSent[m.related_key]!, status: m.status }
+    }
+  }
+  for (const [path, entry] of Object.entries(collisionSent)) {
+    const t = new Date(entry.expires_at).getTime()
+    if (entry.status === "pending" && (!Number.isFinite(t) || t <= Date.now())) {
+      delete collisionSent[path]
+    }
+  }
+
   writeState(cwdHash, {
     ...latest,
     delta_memory: memory,
     delta_synced_at: Date.now(),
     others_activity: buildOthersCache(data.activity, data.repoFullName),
+    pending_inbound: pendingInbound,
+    collision_sent: collisionSent,
   })
 }
 

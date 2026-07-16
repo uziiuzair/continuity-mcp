@@ -3,7 +3,7 @@
 // and prints this markdown; the hook injects it as additionalContext. Backend-
 // agnostic: works identically for the local and remote flavors.
 
-import type { ActiveSession, Decision, Handoff, RecentFileActivity } from "@continuity/shared"
+import type { ActiveSession, Decision, Handoff, Message, RecentFileActivity } from "@continuity/shared"
 
 function ago(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
@@ -25,9 +25,10 @@ export function renderSnapshot(data: {
   activity: RecentFileActivity[]
   decisions: Decision[]
   handoffs: Handoff[]
+  messages: { inbound: Message[]; resolved: Message[] }
   repoFullName: string | null
 }): string {
-  const { active, activity, decisions, handoffs, repoFullName } = data
+  const { active, activity, decisions, handoffs, messages, repoFullName } = data
   const lines = [
     "# Continuity is active for this session",
     "",
@@ -72,6 +73,14 @@ export function renderSnapshot(data: {
     lines.push("", "### Pending handoffs for you")
     for (const h of handoffs.slice(0, 5)) {
       lines.push(`- ${oneLine(h.context)} (${ago(h.created_at)}) → accept via handoff_accept(${h.id})`)
+    }
+  }
+
+  if (messages.inbound.length > 0) {
+    lines.push("", "### Pending messages for you")
+    for (const m of messages.inbound.slice(0, 5)) {
+      const req = m.requires_response ? " [response required]" : ""
+      lines.push(`- ${oneLine(m.body)} → message_respond(${m.id}, "<reply>")${req}`)
     }
   }
 

@@ -2,6 +2,7 @@ import type {
   ActiveSession,
   Decision,
   Handoff,
+  Message,
   RecentFileActivity,
 } from "@continuity/shared"
 import { describe, expect, it } from "vitest"
@@ -69,7 +70,25 @@ function handoff(overrides: Partial<Handoff> = {}): Handoff {
   }
 }
 
-const empty = { active: [], activity: [], decisions: [], handoffs: [], repoFullName: null }
+function message(overrides: Partial<Message> = {}): Message {
+  return {
+    id: "m1", from_agent_session_id: "s2", to_agent_session_id: "s1",
+    repo_full_name: "o/r", kind: "message", body: "which auth lib?",
+    requires_response: true, related_key: null, status: "pending",
+    response: null, created_at: new Date().toISOString(), responded_at: null,
+    expires_at: new Date(Date.now() + 8 * 60_000).toISOString(), from_agent_label: "alpha", from_user_name: "Ann",
+    ...overrides,
+  }
+}
+
+const empty = {
+  active: [],
+  activity: [],
+  decisions: [],
+  handoffs: [],
+  messages: { inbound: [], resolved: [] },
+  repoFullName: null,
+}
 
 describe("renderSnapshot", () => {
   it("includes the 'Continuity is active' header", () => {
@@ -135,5 +154,21 @@ describe("renderSnapshot", () => {
     expect(out).toContain("### Pending handoffs for you")
     expect(out).toContain("finish the migration")
     expect(out).toContain("handoff_accept(h9)")
+  })
+
+  it("omits the pending-messages section when there are none", () => {
+    const out = renderSnapshot(empty)
+    expect(out).not.toContain("### Pending messages for you")
+  })
+
+  it("lists pending messages with respond instructions", () => {
+    const out = renderSnapshot({
+      ...empty,
+      messages: { inbound: [message({ id: "m1", body: "which auth lib?", requires_response: true })], resolved: [] },
+    })
+    expect(out).toContain("### Pending messages for you")
+    expect(out).toContain("which auth lib?")
+    expect(out).toContain('message_respond(m1, ')
+    expect(out).toContain("[response required]")
   })
 })
