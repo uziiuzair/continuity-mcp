@@ -3,14 +3,17 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
 import type { DeltaMemory } from "./deltas.js"
-import type { OthersActivityEntry } from "./guard.js"
+import type { OthersActivityEntry, PendingInboundEntry } from "./guard.js"
 
 // Shared session state, written by whichever process (SessionStart hook or this
 // shim) checks in first and read by both so they converge on one session_id.
 // The optional fields carry the mid-session coordination caches: delta_memory /
 // delta_synced_at for --prompt-sync's announce-once baseline, others_activity +
 // collision_warned for the PreToolUse collision guard (which must never touch
-// the network, so it reads what --snapshot/--prompt-sync cached here).
+// the network, so it reads what --snapshot/--prompt-sync cached here). Three
+// more support agent messaging: pending_inbound + message_warned back the ack
+// gate (PreToolUse) and stop gate (Stop), and collision_sent tracks in-flight
+// collision-negotiation messages for guard mode "negotiate".
 export type SessionState = {
   session_id: string | null
   agent_label: string | null
@@ -21,6 +24,9 @@ export type SessionState = {
   delta_synced_at?: number | null
   others_activity?: OthersActivityEntry[] | null
   collision_warned?: string[] | null
+  pending_inbound?: PendingInboundEntry[] | null
+  collision_sent?: Record<string, { message_id: string; expires_at: string; status: string }> | null
+  message_warned?: string[] | null
 }
 
 // State lives under the plugin's persistent data dir (survives plugin updates).

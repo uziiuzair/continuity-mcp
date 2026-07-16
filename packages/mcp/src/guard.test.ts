@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest"
-import { type OthersActivityEntry, buildOthersCache, collisionDecision } from "./guard.js"
+import {
+  type OthersActivityEntry,
+  ackGateDecision,
+  buildOthersCache,
+  collisionDecision,
+  collisionDecisionV2,
+  parseGuardMode,
+  stopGateDecision,
+} from "./guard.js"
 
 const NOW = Date.parse("2026-07-16T12:00:00.000Z")
 const iso = (offsetMs: number) => new Date(NOW + offsetMs).toISOString()
@@ -93,5 +101,198 @@ describe("buildOthersCache", () => {
   it("caps the cache at 100 entries", () => {
     const many = Array.from({ length: 150 }, (_, i) => ({ ...base, file_path: `f${i}.ts` }))
     expect(buildOthersCache(many, "o/r").length).toBe(100)
+  })
+})
+
+describe("guard v2: collision negotiation", () => {
+  const contested = [entry()]
+  it("mode off allows; mode warn keeps warn-once", () => {
+    expect(
+      collisionDecisionV2({ mode: "off", entries: contested, relPath: "src/app.ts", warned: [], collisionSent: {}, nowMs: NOW })
+        .action,
+    ).toBe("allow")
+    const warn = collisionDecisionV2({
+      mode: "warn",
+      entries: contested,
+      relPath: "src/app.ts",
+      warned: [],
+      collisionSent: {},
+      nowMs: NOW,
+    })
+    expect(warn.action).toBe("deny")
+    const again = collisionDecisionV2({
+      mode: "warn",
+      entries: contested,
+      relPath: "src/app.ts",
+      warned: ["src/app.ts"],
+      collisionSent: {},
+      nowMs: NOW,
+    })
+    expect(again.action).toBe("allow")
+  })
+  it("negotiate: denies with a message_send instruction until a collision message exists", () => {
+    const d = collisionDecisionV2({
+      mode: "negotiate",
+      entries: contested,
+      relPath: "src/app.ts",
+      warned: [],
+      collisionSent: {},
+      nowMs: NOW,
+    })
+    expect(d.action).toBe("deny")
+    if (d.action === "deny") {
+      expect(d.reason).toContain("message_send")
+      expect(d.reason).toContain("about_file")
+      expect(d.reason).toContain("src/app.ts")
+    }
+  })
+  it("negotiate: repeat-denies (not warn-once) while no message sent", () => {
+    const d = collisionDecisionV2({
+      mode: "negotiate",
+      entries: contested,
+      relPath: "src/app.ts",
+      warned: ["src/app.ts"],
+      collisionSent: {},
+      nowMs: NOW,
+    })
+    expect(d.action).toBe("deny")
+  })
+  it("negotiate: pending unexpired collision message keeps denying with countdown", () => {
+    const sent = { "src/app.ts": { message_id: "m1", expires_at: iso(5 * 60_000), status: "pending" } }
+    const d = collisionDecisionV2({
+      mode: "negotiate",
+      entries: contested,
+      relPath: "src/app.ts",
+      warned: [],
+      collisionSent: sent,
+      nowMs: NOW,
+    })
+    expect(d.action).toBe("deny")
+    if (d.action === "deny") expect(d.reason).toContain("expires")
+  })
+  it("negotiate: responded or expired collision message allows", () => {
+    const responded = { "src/app.ts": { message_id: "m1", expires_at: iso(5 * 60_000), status: "responded" } }
+    expect(
+      collisionDecisionV2({
+        mode: "negotiate",
+        entries: contested,
+        relPath: "src/app.ts",
+        warned: [],
+        collisionSent: responded,
+        nowMs: NOW,
+      }).action,
+    ).toBe("allow")
+    const expired = { "src/app.ts": { message_id: "m1", expires_at: iso(-1000), status: "pending" } }
+    expect(
+      collisionDecisionV2({
+        mode: "negotiate",
+        entries: contested,
+        relPath: "src/app.ts",
+        warned: [],
+        collisionSent: expired,
+        nowMs: NOW,
+      }).action,
+    ).toBe("allow")
+  })
+  it("negotiate: dismissed collision message re-prompts a fresh message_send", () => {
+    const dismissed = { "src/app.ts": { message_id: "m1", expires_at: iso(5 * 60_000), status: "dismissed" } }
+    const d = collisionDecisionV2({
+      mode: "negotiate",
+      entries: contested,
+      relPath: "src/app.ts",
+      warned: [],
+      collisionSent: dismissed,
+      nowMs: NOW,
+    })
+    expect(d.action).toBe("deny")
+    if (d.action === "deny") expect(d.reason).toContain("message_send")
+  })
+  it("negotiate: uncontested path allows regardless of collisionSent", () => {
+    expect(
+      collisionDecisionV2({
+        mode: "negotiate",
+        entries: contested,
+        relPath: "src/other.ts",
+        warned: [],
+        collisionSent: {},
+        nowMs: NOW,
+      }).action,
+    ).toBe("allow")
+  })
+  it("fails open on malformed inputs", () => {
+    expect(
+      collisionDecisionV2({ mode: "negotiate", entries: null, relPath: "src/app.ts", warned: null, collisionSent: null, nowMs: NOW })
+        .action,
+    ).toBe("allow")
+  })
+})
+
+describe("guard v2: ack gate", () => {
+  const item = {
+    message_id: "m1",
+    from_label: "alpha",
+    from_user: "Ann",
+    body: "ack me",
+    kind: "decision",
+    related_key: "orm",
+    requires_response: true,
+    expires_at: iso(5 * 60_000),
+  }
+  it("denies once listing unanswered required items, then passes", () => {
+    const d = ackGateDecision({ pendingInbound: [item], messageWarned: [], nowMs: NOW })
+    expect(d.warn).toBe(true)
+    if (d.warn) {
+      expect(d.reason).toContain("m1")
+      expect(d.reason).toContain("message_respond")
+      const again = ackGateDecision({ pendingInbound: [item], messageWarned: d.warned, nowMs: NOW })
+      expect(again.warn).toBe(false)
+    }
+  })
+  it("ignores expired and non-required items", () => {
+    const expired = { ...item, expires_at: iso(-1000) }
+    const fyi = { ...item, message_id: "m2", requires_response: false }
+    expect(ackGateDecision({ pendingInbound: [expired, fyi], messageWarned: [], nowMs: NOW }).warn).toBe(false)
+  })
+  it("fails open on malformed inputs", () => {
+    expect(ackGateDecision({ pendingInbound: null, messageWarned: null, nowMs: NOW }).warn).toBe(false)
+  })
+})
+
+describe("guard v2: stop gate", () => {
+  const item = {
+    message_id: "m1",
+    from_label: "alpha",
+    from_user: "Ann",
+    body: "ack me",
+    kind: "message",
+    related_key: null,
+    requires_response: true,
+    expires_at: iso(5 * 60_000),
+  }
+  it("blocks on fresh required items, never when stop_hook_active", () => {
+    const b = stopGateDecision({ pendingInbound: [item], stopHookActive: false, nowMs: NOW })
+    expect(b.block).toBe(true)
+    if (b.block) expect(b.reason).toContain("message_respond")
+    expect(stopGateDecision({ pendingInbound: [item], stopHookActive: true, nowMs: NOW }).block).toBe(false)
+    expect(
+      stopGateDecision({ pendingInbound: [{ ...item, expires_at: iso(-1) }], stopHookActive: false, nowMs: NOW }).block,
+    ).toBe(false)
+  })
+  it("mentions message_dismiss as the response-not-warranted path", () => {
+    const b = stopGateDecision({ pendingInbound: [item], stopHookActive: false, nowMs: NOW })
+    if (b.block) expect(b.reason).toContain("message_dismiss")
+  })
+})
+
+describe("parseGuardMode", () => {
+  it("maps legacy booleans and defaults to negotiate", () => {
+    expect(parseGuardMode(undefined)).toBe("negotiate")
+    expect(parseGuardMode("")).toBe("negotiate")
+    expect(parseGuardMode("true")).toBe("negotiate")
+    expect(parseGuardMode("false")).toBe("off")
+    expect(parseGuardMode("0")).toBe("off")
+    expect(parseGuardMode("off")).toBe("off")
+    expect(parseGuardMode("warn")).toBe("warn")
+    expect(parseGuardMode("Negotiate")).toBe("negotiate")
   })
 })
