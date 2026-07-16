@@ -1,6 +1,6 @@
 {
   "name": "continuity",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "[Alpha] Shared presence, file-activity awareness, decisions, task claims & handoffs for parallel Claude Code sessions. Works locally (SQLite, zero-config) or against a team server.",
   "author": {
     "name": "Continuity contributors"

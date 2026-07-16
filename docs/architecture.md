@@ -171,7 +171,12 @@ unreachable backend never blocks the session:
 The **repo gate** (`packages/mcp/src/gate.ts`) keeps the user-wide plugin inert outside
 the repos you care about. An empty allowlist activates in **any git repo**; a set
 allowlist activates only in repos whose normalized git remote (`host/owner/repo`) matches
-an entry. A non-git directory is always inert.
+an entry. A non-git directory is always inert. The gate also derives `cwd_hash` (sha256 of
+the git toplevel, truncated to 16 hex chars) that everything else — `checkin`, the
+`agent_sessions_cwd_live_uq` unique index, the hook state file — keys identity on; setting
+`CONTINUITY_SESSION_ID` folds that value into the hash input so a host running several
+sessions against one checkout can give each a distinct continuity identity instead of
+collapsing into one shared session per checkout.
 
 ## Data model
 

@@ -11,6 +11,17 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+## [0.1.0-alpha.3] - 2026-07-17
+
+### Added
+
+- **`CONTINUITY_SESSION_ID` override.** A host running several sessions against the
+  same git checkout can set this env var per session to give each its own continuity
+  identity (presence, handoffs) instead of every session in that checkout collapsing
+  into one shared identity. It folds into the `cwd_hash` derivation alongside the git
+  toplevel; `repoFullName` is unaffected. Unset (the default) leaves the existing
+  one-identity-per-checkout behavior unchanged.
+
 ## [0.1.0-alpha.2] - 2026-07-16
 
 ### Added

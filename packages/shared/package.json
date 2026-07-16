@@ -1,6 +1,6 @@
 {
   "name": "@continuity/shared",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "Shared schema, types, the ContinuityBackend interface, and dialect-agnostic query logic for Continuity.",
   "license": "MIT",
   "type": "module",
