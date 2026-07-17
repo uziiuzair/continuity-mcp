@@ -38,6 +38,39 @@ The Claude Code plugin picks the flavor automatically: if you provide an API URL
 key it runs in **team** mode; otherwise it runs **local** against
 `~/.continuity/continuity.db`.
 
+## How sessions talk (and why they can't ignore each other)
+
+Awareness alone doesn't stop collisions — a model can read a warning and edit
+anyway. Continuity enforces coordination with hooks, and every block expires on
+a timeout, so a silent teammate can never wedge you:
+
+1. **See.** Each session gets a coordination snapshot at start and a
+   "what changed" delta on every prompt: new sessions, files others are
+   touching, decisions, handoffs, and incoming messages.
+2. **Talk.** `message_send` delivers a message to another session (or
+   broadcasts); it arrives in the recipient's context on their next prompt.
+   `message_respond` / `message_dismiss` answer it.
+3. **Negotiate.** Editing a file another live session touched recently is
+   **denied** until you send them a collision message
+   (`message_send({ to_session, about_file, body })`) and they respond — or the
+   block times out. A response (or explicit dismissal) lifts the block; fresh
+   contention on the same file re-opens negotiation.
+4. **Answer.** Messages marked response-required gate your next edit (one
+   deterministic nudge) and block ending the turn until you respond, dismiss,
+   or they expire. `decision_write` with `requires_ack` demands acknowledgment
+   from every active session.
+
+Configuration (plugin options):
+
+| Option | Default | Meaning |
+|---|---|---|
+| `collisionGuard` | `negotiate` | `negotiate` blocks contested edits until coordinated; `warn` gives one warning then allows; `off` disables collision blocking |
+| `messageTimeoutMinutes` | `10` | Lifetime of messages and enforcement blocks — the no-deadlock rule |
+
+> **Team-mode note:** the messaging tools currently require the local flavor;
+> the Worker routes for team mode are a follow-up (calls fail loudly against a
+> team server until then).
+
 ## Install
 
 In Claude Code, add this repo as a plugin marketplace and install the plugin:
@@ -86,7 +119,9 @@ the SessionStart hook also warns about this in-session).
 
 ## Status
 
-🚧 Early development. See [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) for the
+🚧 Early development. `0.1.0-alpha.3` adds direct messaging, collision
+negotiation, and reply enforcement (see [`CHANGELOG.md`](./CHANGELOG.md)).
+[`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) documents the original
 architecture and build phases.
 
 **Node version:** **Node ≥ 22.5** for both flavors — the local flavor uses
