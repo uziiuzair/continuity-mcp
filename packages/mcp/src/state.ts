@@ -30,9 +30,13 @@ export type SessionState = {
 }
 
 // State lives under the plugin's persistent data dir (survives plugin updates).
-// CLAUDE_PLUGIN_DATA is exported to MCP subprocesses by Claude Code; fall back
+// CONTINUITY_STATE_DIR lets an embedding host (a harness running the MCP
+// primitives in-process) keep this state in its own directory; otherwise
+// CLAUDE_PLUGIN_DATA, which Claude Code exports to MCP subprocesses; fall back
 // to the conventional path so the shim is testable standalone.
 function dataDir(): string {
+  const own = process.env.CONTINUITY_STATE_DIR
+  if (own && own.trim()) return own
   const fromEnv = process.env.CLAUDE_PLUGIN_DATA
   if (fromEnv && fromEnv.trim()) return fromEnv
   return join(homedir(), ".claude", "plugins", "data", "continuity")
