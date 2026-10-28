@@ -1,5 +1,6 @@
 import type { Message } from "@continuity/shared"
 import { describe, expect, it } from "vitest"
+import type { LoopState } from "./state.js"
 import {
   type CollisionSentMap,
   type OthersActivityEntry,
@@ -10,6 +11,7 @@ import {
   collisionDecisionV2,
   parseGuardMode,
   reconcileCollisionSent,
+  loopCronDecision,
   stopGateDecision,
 } from "./guard.js"
 
@@ -478,5 +480,47 @@ describe("reconcileCollisionSent", () => {
   it("handles a null/undefined previous map", () => {
     expect(reconcileCollisionSent(null, [], [], NOW)).toEqual({})
     expect(reconcileCollisionSent(undefined, [msg()], [entry()], NOW)).toEqual({})
+  })
+})
+
+describe("loopCronDecision", () => {
+  const loop = (cron_job_id: string | null): LoopState =>
+    ({ started_at: 0, task: null, tier: 1, quiet_streak: 0, own_work_done: false, cron_job_id, last_tick_at: 0, seen: { messages: [], responses: [], handoffs: [], decisions: [], sessions: [] } })
+  const marked = (id: string) => ({ id, prompt: "[continuity-loop] Continuity Loop tick" })
+  const other = { id: "x", prompt: "unrelated" }
+
+  it("loop null + marked crons blocks with exact reason", () => {
+    expect(loopCronDecision({ loop: null, sessionCrons: [marked("a"), other, marked("b")], stopHookActive: false })).toEqual({
+      block: true,
+      reason: "Continuity Loop has ended; CronDelete a, b.",
+    })
+  })
+  it("ignores unmarked crons", () => {
+    expect(loopCronDecision({ loop: null, sessionCrons: [other], stopHookActive: false })).toEqual({ block: false })
+  })
+  it("loop set, cron id set, no marked cron -> clearLoop", () => {
+    expect(loopCronDecision({ loop: loop("a"), sessionCrons: [other], stopHookActive: false })).toEqual({ block: false, clearLoop: true })
+  })
+  it("loop set, cron id null, no marked cron -> untouched", () => {
+    expect(loopCronDecision({ loop: loop(null), sessionCrons: [], stopHookActive: false })).toEqual({ block: false })
+  })
+  it("duplicates: deletes all but loop.cron_job_id", () => {
+    expect(loopCronDecision({ loop: loop("b"), sessionCrons: [marked("a"), marked("b"), marked("c")], stopHookActive: false })).toEqual({
+      block: true,
+      reason: "Continuity Loop has extra crons; CronDelete a, c.",
+    })
+  })
+  it("duplicates with null cron_job_id keeps the first", () => {
+    expect(loopCronDecision({ loop: loop(null), sessionCrons: [marked("a"), marked("b")], stopHookActive: false })).toEqual({
+      block: true,
+      reason: "Continuity Loop has extra crons; CronDelete b.",
+    })
+  })
+  it("single matching cron is fine", () => {
+    expect(loopCronDecision({ loop: loop("a"), sessionCrons: [marked("a")], stopHookActive: false })).toEqual({ block: false })
+  })
+  it("stopHookActive or undefined crons never block", () => {
+    expect(loopCronDecision({ loop: null, sessionCrons: [marked("a")], stopHookActive: true }).block).toBe(false)
+    expect(loopCronDecision({ loop: null, sessionCrons: undefined, stopHookActive: false }).block).toBe(false)
   })
 })

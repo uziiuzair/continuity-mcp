@@ -4,14 +4,14 @@
 // items never block — the timeout-override rule. Fail-open everywhere.
 import { repoAllowlistFromEnv } from "./lib/env.mjs"
 import { resolveRepoContext } from "./lib/gate.mjs"
-import { stopGateDecision } from "./lib/guard.mjs"
-import { readState } from "./lib/state.mjs"
+import { loopCronDecision, stopGateDecision } from "./lib/guard.mjs"
+import { readState, writeState } from "./lib/state.mjs"
 import { readStdinJson } from "./lib/stdin.mjs"
 
 async function main() {
   const input = await readStdinJson()
   const repo = resolveRepoContext(input.cwd || process.cwd(), repoAllowlistFromEnv(), {
-    claudeSessionId: input.session_id,
+    claudeSessionId: input.session_id || process.env.CLAUDE_CODE_SESSION_ID,
   })
   if (!repo) return
   const state = readState(repo.cwdHash)
@@ -22,6 +22,16 @@ async function main() {
   })
   if (decision.block) {
     process.stdout.write(JSON.stringify({ decision: "block", reason: decision.reason }))
+    return
+  }
+  const loopDecision = loopCronDecision({
+    loop: state?.loop,
+    sessionCrons: input.session_crons,
+    stopHookActive: Boolean(input.stop_hook_active),
+  })
+  if (loopDecision.clearLoop && state) writeState(repo.cwdHash, { ...state, loop: null })
+  if (loopDecision.block) {
+    process.stdout.write(JSON.stringify({ decision: "block", reason: loopDecision.reason }))
   }
 }
 

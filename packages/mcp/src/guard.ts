@@ -6,7 +6,8 @@
 // attempt is denied with an instructive reason, the retry passes, so the model
 // gets one deterministic nudge and never a hard wall.
 
-import type { Message, RecentFileActivity } from "@continuity/shared"
+import { LOOP_CRON_MARKER, type Message, type RecentFileActivity } from "@continuity/shared"
+import type { LoopState } from "./state.js"
 
 const DEFAULT_WINDOW_MS = 30 * 60_000
 const MAX_WARNED = 100
@@ -317,4 +318,28 @@ export function stopGateDecision(args: {
     block: true,
     reason: `Continuity: before ending the turn, answer or dismiss pending message(s): ${list}. Use message_dismiss(id, reason) if a response isn't warranted.`,
   }
+}
+
+// Stop guard for Continuity Loop crons. A cron is "marked" when its prompt
+// carries LOOP_CRON_MARKER. Loop ended but crons linger -> delete them; loop
+// live with its cron gone (expired/lost) -> clear the loop; duplicates -> keep
+// only loop.cron_job_id. A loop whose cron_job_id is still null is mid-start
+// (CronCreate unconfirmed): never clear or block it.
+export function loopCronDecision(args: {
+  loop: LoopState | null | undefined
+  sessionCrons: { id: string; prompt: string }[] | undefined
+  stopHookActive: boolean
+}): { block: boolean; reason?: string; clearLoop?: boolean } {
+  if (args.stopHookActive || !Array.isArray(args.sessionCrons)) return { block: false }
+  const marked = args.sessionCrons.filter((c) => typeof c?.prompt === "string" && c.prompt.includes(LOOP_CRON_MARKER))
+  const ids = (list: { id: string }[]) => list.map((c) => c.id).join(", ")
+  if (!args.loop) {
+    if (marked.length === 0) return { block: false }
+    return { block: true, reason: `Continuity Loop has ended; CronDelete ${ids(marked)}.` }
+  }
+  if (marked.length === 0) return args.loop.cron_job_id ? { block: false, clearLoop: true } : { block: false }
+  const keep = args.loop.cron_job_id ?? marked[0]?.id
+  const extra = marked.filter((c) => c.id !== keep)
+  if (extra.length === 0) return { block: false }
+  return { block: true, reason: `Continuity Loop has extra crons; CronDelete ${ids(extra)}.` }
 }

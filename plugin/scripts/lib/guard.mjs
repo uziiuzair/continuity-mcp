@@ -9,6 +9,9 @@
 // buildPendingInbound, reconcileCollisionSent. If you change reason text,
 // thresholds, or semantics on the ts side, change it here too.
 
+// Mirror of LOOP_CRON_MARKER in @continuity/shared (parity-tested).
+export const LOOP_CRON_MARKER = "[continuity-loop]"
+
 const DEFAULT_WINDOW_MS = 30 * 60_000
 const MAX_WARNED = 100
 
@@ -153,4 +156,20 @@ export function stopGateDecision(args) {
     block: true,
     reason: `Continuity: before ending the turn, answer or dismiss pending message(s): ${list}. Use message_dismiss(id, reason) if a response isn't warranted.`,
   }
+}
+
+// Mirror of guard.ts loopCronDecision.
+export function loopCronDecision(args) {
+  if (args.stopHookActive || !Array.isArray(args.sessionCrons)) return { block: false }
+  const marked = args.sessionCrons.filter((c) => typeof c?.prompt === "string" && c.prompt.includes(LOOP_CRON_MARKER))
+  const ids = (list) => list.map((c) => c.id).join(", ")
+  if (!args.loop) {
+    if (marked.length === 0) return { block: false }
+    return { block: true, reason: `Continuity Loop has ended; CronDelete ${ids(marked)}.` }
+  }
+  if (marked.length === 0) return args.loop.cron_job_id ? { block: false, clearLoop: true } : { block: false }
+  const keep = args.loop.cron_job_id ?? marked[0]?.id
+  const extra = marked.filter((c) => c.id !== keep)
+  if (extra.length === 0) return { block: false }
+  return { block: true, reason: `Continuity Loop has extra crons; CronDelete ${ids(extra)}.` }
 }

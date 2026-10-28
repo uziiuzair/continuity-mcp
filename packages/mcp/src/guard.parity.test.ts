@@ -1,4 +1,6 @@
+import { LOOP_CRON_MARKER } from "@continuity/shared"
 import { describe, expect, it } from "vitest"
+import type { LoopState } from "./state.js"
 import {
   type CollisionSentMap,
   type GuardMode,
@@ -7,6 +9,7 @@ import {
   ackGateDecision,
   collisionDecision,
   collisionDecisionV2,
+  loopCronDecision,
   parseGuardMode,
   stopGateDecision,
 } from "./guard.js"
@@ -185,5 +188,29 @@ describe("parity: parseGuardMode", () => {
       expect(parseGuardMode(raw)).toBe(expected)
       expect(mirror.parseGuardMode(raw)).toBe(expected)
     }
+  })
+})
+
+describe("parity: loopCronDecision", () => {
+  const lp = (cron_job_id: string | null): LoopState =>
+    ({ started_at: 0, task: null, tier: 1, quiet_streak: 0, own_work_done: false, cron_job_id, last_tick_at: 0, seen: { messages: [], responses: [], handoffs: [], decisions: [], sessions: [] } })
+  const m = (id: string) => ({ id, prompt: `${LOOP_CRON_MARKER} tick` })
+  const u = { id: "u", prompt: "other" }
+  const cases = [
+    { loop: null, sessionCrons: [m("a"), m("b")], stopHookActive: false },
+    { loop: null, sessionCrons: [u], stopHookActive: false },
+    { loop: lp("a"), sessionCrons: [u], stopHookActive: false },
+    { loop: lp(null), sessionCrons: [], stopHookActive: false },
+    { loop: lp("b"), sessionCrons: [m("a"), m("b"), m("c")], stopHookActive: false },
+    { loop: lp(null), sessionCrons: [m("a"), m("b")], stopHookActive: false },
+    { loop: lp("a"), sessionCrons: [m("a")], stopHookActive: false },
+    { loop: null, sessionCrons: [m("a")], stopHookActive: true },
+    { loop: null, sessionCrons: undefined, stopHookActive: false },
+  ]
+  it("matches ts for every case", () => {
+    for (const c of cases) expect(mirror.loopCronDecision(c)).toEqual(loopCronDecision(c))
+  })
+  it("marker constant matches the shared constant", () => {
+    expect((mirror as unknown as { LOOP_CRON_MARKER: string }).LOOP_CRON_MARKER).toBe(LOOP_CRON_MARKER)
   })
 })

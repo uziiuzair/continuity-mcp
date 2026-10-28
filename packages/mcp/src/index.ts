@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { readFileSync, realpathSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import pkg from "../package.json" with { type: "json" }
@@ -234,6 +234,9 @@ async function runCheckin(rt: Runtime): Promise<void> {
   try {
     const res = await backend.checkin({ agent_label: agentLabel, cwd_hash: repo.cwdHash, ...sessionRepoFields(repo) })
     persistSessionId(repo.cwdHash, res.session_id, agentLabel)
+    // Record where this session now is so loop_tick reports the right worktree.
+    const prev = readState(repo.cwdHash)
+    if (prev) writeState(repo.cwdHash, { ...prev, current_dir: realpathSync(process.cwd()) })
   } catch {
     // fail-open
   }

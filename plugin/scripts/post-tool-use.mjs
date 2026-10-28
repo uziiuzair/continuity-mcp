@@ -18,7 +18,7 @@ async function main() {
   const filePath = input.tool_input?.file_path
   if (!ALLOWED.has(tool) || !filePath) return
 
-  const repo = resolveRepoContext(cwd, repoAllowlistFromEnv(), { claudeSessionId: input.session_id })
+  const repo = resolveRepoContext(cwd, repoAllowlistFromEnv(), { claudeSessionId: input.session_id || process.env.CLAUDE_CODE_SESSION_ID })
   if (!repo) return
 
   const rel = repoRelative(repo.toplevel, filePath)
