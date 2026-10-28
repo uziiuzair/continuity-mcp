@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
+import { realpathSync } from "node:fs"
+import { basename, dirname, resolve } from "node:path"
 
 // Plain-ESM mirror of packages/mcp/src/gate.ts so the hooks run with zero build
 // step and zero dependencies. Empty allowlist → activate in any git repo. If you
@@ -49,10 +51,49 @@ function identityHash(toplevel, claudeSessionId) {
   return createHash("sha256").update(hashInput).digest("hex").slice(0, 16)
 }
 
+function canonical(p) {
+  try {
+    return realpathSync(p)
+  } catch {
+    return p
+  }
+}
+
+// Mirror of gate.ts gitLayout: one rev-parse call; stdout is salvaged from the
+// error because an unborn HEAD exits non-zero after printing the other lines.
+function gitLayout(dir) {
+  let out
+  try {
+    out = execFileSync(
+      "git",
+      ["-C", dir, "rev-parse", "--show-toplevel", "--git-dir", "--git-common-dir", "--abbrev-ref", "HEAD"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    )
+  } catch (e) {
+    out = typeof e?.stdout === "string" ? e.stdout : ""
+  }
+  const [toplevel, gitDir, commonDir, head] = out.split("\n").map((l) => l.trim())
+  if (!toplevel || !gitDir || !commonDir) return null
+
+  const realCommon = canonical(resolve(toplevel, commonDir))
+  const isWorktree = canonical(resolve(toplevel, gitDir)) !== realCommon
+  return {
+    toplevel,
+    worktree: {
+      is_worktree: isWorktree,
+      path: toplevel,
+      branch: head && head !== "HEAD" ? head : null,
+      main_checkout: basename(realCommon) === ".git" ? dirname(realCommon) : null,
+      claude_managed: canonical(toplevel).includes("/.claude/worktrees/"),
+    },
+  }
+}
+
 // Hooks pass their input's session_id as opts.claudeSessionId.
 export function resolveRepoContext(dir, allowlistRaw, opts = {}) {
-  const toplevel = git(dir, ["rev-parse", "--show-toplevel"])
-  if (!toplevel) return null
+  const layout = gitLayout(dir)
+  if (!layout) return null
+  const { toplevel, worktree } = layout
   const origin = git(toplevel, ["config", "--get", "remote.origin.url"])
   const normalized = normalizeRemote(origin)
 
@@ -66,5 +107,7 @@ export function resolveRepoContext(dir, allowlistRaw, opts = {}) {
     toplevel,
     repoFullName: normalized && slash >= 0 ? normalized.slice(slash + 1) : null,
     cwdHash: identityHash(toplevel, opts.claudeSessionId),
+    worktree,
+    repoKey: normalized ?? worktree.main_checkout ?? toplevel,
   }
 }

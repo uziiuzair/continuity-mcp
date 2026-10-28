@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
@@ -87,6 +87,65 @@ describe("parity: resolveRepoContext", () => {
     repoDir = mkdtempSync(join(tmpdir(), "continuity-gate-parity-nongit-"))
     expect(resolveRepoContext(repoDir, undefined)).toBeNull()
     expect(mirror.resolveRepoContext(repoDir, undefined)).toBeNull()
+  })
+})
+
+describe("parity: worktree detection and repoKey", () => {
+  const dirs: string[] = []
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd, stdio: "ignore" })
+
+  function makeMain(remote?: string): string {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "continuity-gate-parity-wt-")))
+    dirs.push(dir)
+    git(dir, "init", "-q", "-b", "main")
+    if (remote) git(dir, "remote", "add", "origin", remote)
+    git(dir, "commit", "-q", "--allow-empty", "-m", "init")
+    return dir
+  }
+
+  function expectParity(dir: string) {
+    const ts = resolveRepoContext(dir, undefined)
+    expect(ts).not.toBeNull()
+    expect(mirror.resolveRepoContext(dir, undefined)).toEqual(ts)
+    return ts
+  }
+
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+  })
+
+  it("agrees on a main checkout", () => {
+    expect(expectParity(makeMain())?.worktree.is_worktree).toBe(false)
+  })
+
+  it("agrees on a linked worktree and on repoKey with no remote", () => {
+    const main = makeMain()
+    const wt = `${main}-wt`
+    git(main, "worktree", "add", "-q", "-b", "feat/x", wt)
+    dirs.push(wt)
+    const ctx = expectParity(wt)
+    expect(ctx?.worktree.is_worktree).toBe(true)
+    expect(ctx?.repoKey).toBe(main)
+  })
+
+  it("agrees on detached HEAD", () => {
+    const main = makeMain()
+    git(main, "checkout", "-q", "--detach")
+    expect(expectParity(main)?.worktree.branch).toBeNull()
+  })
+
+  it("agrees on a claude-managed worktree", () => {
+    const main = makeMain()
+    mkdirSync(join(main, ".claude", "worktrees"), { recursive: true })
+    const wt = join(main, ".claude", "worktrees", "x")
+    git(main, "worktree", "add", "-q", "-b", "feat/y", wt)
+    expect(expectParity(wt)?.worktree.claude_managed).toBe(true)
+  })
+
+  it("agrees on repoKey with a remote", () => {
+    const main = makeMain("https://github.com/test/parity.git")
+    expect(expectParity(main)?.repoKey).toBe("github.com/test/parity")
   })
 })
 

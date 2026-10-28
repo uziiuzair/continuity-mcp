@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
+import { realpathSync } from "node:fs"
+import { basename, dirname, resolve } from "node:path"
 
 // Repo gate. Continuity installs user-wide, so the shim must stay inert outside
 // the repos a user actually wants coordinated. Two modes:
@@ -9,20 +11,62 @@ import { createHash } from "node:crypto"
 //     (host/owner/repo). This is how a team scopes Continuity to its repos.
 // A non-git directory is always inert.
 
+export type WorktreeInfo = {
+  is_worktree: boolean
+  path: string // toplevel
+  branch: string | null // null when detached
+  main_checkout: string | null
+  claude_managed: boolean // path contains "/.claude/worktrees/"
+}
+
 export type RepoContext = {
   toplevel: string
   repoFullName: string | null // "owner/repo", best effort
   cwdHash: string
+  worktree: WorktreeInfo
+  // Normalized remote ("host/owner/repo") when present, else the main
+  // checkout path (or the toplevel). Shared by every worktree of one repo.
+  repoKey: string
 }
 
-function gitToplevel(dir: string): string | null {
+function canonical(p: string): string {
   try {
-    return execFileSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim()
+    return realpathSync(p)
   } catch {
-    return null
+    return p
+  }
+}
+
+// One git call for toplevel + worktree facts. A repo with no commits yet exits
+// non-zero on the HEAD lookup but still prints the earlier lines, so stdout is
+// read from the error too.
+function gitLayout(dir: string): { toplevel: string; worktree: WorktreeInfo } | null {
+  let out: string
+  try {
+    out = execFileSync(
+      "git",
+      ["-C", dir, "rev-parse", "--show-toplevel", "--git-dir", "--git-common-dir", "--abbrev-ref", "HEAD"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    )
+  } catch (e) {
+    const stdout = (e as { stdout?: unknown }).stdout
+    out = typeof stdout === "string" ? stdout : ""
+  }
+  const lines = out.split("\n").map((l) => l.trim())
+  const [toplevel, gitDir, commonDir, head] = lines
+  if (!toplevel || !gitDir || !commonDir) return null
+
+  const realCommon = canonical(resolve(toplevel, commonDir))
+  const isWorktree = canonical(resolve(toplevel, gitDir)) !== realCommon
+  return {
+    toplevel,
+    worktree: {
+      is_worktree: isWorktree,
+      path: toplevel,
+      branch: head && head !== "HEAD" ? head : null,
+      main_checkout: basename(realCommon) === ".git" ? dirname(realCommon) : null,
+      claude_managed: canonical(toplevel).includes("/.claude/worktrees/"),
+    },
   }
 }
 
@@ -82,8 +126,9 @@ export function resolveRepoContext(
   allowlistRaw: string | undefined,
   opts: { claudeSessionId?: string | null } = {},
 ): RepoContext | null {
-  const toplevel = gitToplevel(dir)
-  if (!toplevel) return null
+  const layout = gitLayout(dir)
+  if (!layout) return null
+  const { toplevel, worktree } = layout
 
   const origin = gitOriginUrl(toplevel)
   const normalized = origin ? normalizeRemote(origin) : null
@@ -102,5 +147,7 @@ export function resolveRepoContext(
     toplevel,
     repoFullName,
     cwdHash: identityHash(toplevel, opts.claudeSessionId),
+    worktree,
+    repoKey: normalized ?? worktree.main_checkout ?? toplevel,
   }
 }

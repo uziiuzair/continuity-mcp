@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
@@ -140,5 +140,89 @@ describe("Claude session identity", () => {
     expect(ctx?.cwdHash).toBe(legacy)
     expect(resolveRepoContext(HERE, undefined, { claudeSessionId: null })?.cwdHash).toBe(legacy)
     expect(resolveRepoContext(HERE, undefined, { claudeSessionId: "" })?.cwdHash).toBe(legacy)
+  })
+})
+
+// Worktree detection + repoKey. Real scratch repos with a real `git worktree add`.
+describe("worktree detection and repoKey", () => {
+  const dirs: string[] = []
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd, stdio: "ignore" })
+
+  function makeMain(remote?: string): string {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "continuity-gate-wt-")))
+    dirs.push(dir)
+    git(dir, "init", "-q", "-b", "main")
+    if (remote) git(dir, "remote", "add", "origin", remote)
+    git(dir, "commit", "-q", "--allow-empty", "-m", "init")
+    return dir
+  }
+
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+  })
+
+  it("main checkout: not a worktree, branch main, main_checkout = toplevel", () => {
+    const main = makeMain()
+    const ctx = resolveRepoContext(main, undefined)
+    expect(ctx?.worktree).toEqual({
+      is_worktree: false,
+      path: main,
+      branch: "main",
+      main_checkout: main,
+      claude_managed: false,
+    })
+  })
+
+  it("linked worktree: is_worktree, its own branch, main_checkout = main toplevel", () => {
+    const main = makeMain()
+    const wt = join(main, "..", `${main.split("/").pop()}-wt`)
+    git(main, "worktree", "add", "-q", "-b", "feat/x", wt)
+    dirs.push(realpathSync(wt))
+    const ctx = resolveRepoContext(wt, undefined)
+    expect(ctx?.worktree.is_worktree).toBe(true)
+    expect(ctx?.worktree.branch).toBe("feat/x")
+    expect(ctx?.worktree.main_checkout).toBe(main)
+    expect(ctx?.worktree.path).toBe(realpathSync(wt))
+    expect(ctx?.worktree.claude_managed).toBe(false)
+  })
+
+  it("detached HEAD: branch is null", () => {
+    const main = makeMain()
+    git(main, "checkout", "-q", "--detach")
+    expect(resolveRepoContext(main, undefined)?.worktree.branch).toBeNull()
+  })
+
+  it("claude_managed is true under .claude/worktrees/x", () => {
+    const main = makeMain()
+    mkdirSync(join(main, ".claude", "worktrees"), { recursive: true })
+    const wt = join(main, ".claude", "worktrees", "x")
+    git(main, "worktree", "add", "-q", "-b", "feat/y", wt)
+    const ctx = resolveRepoContext(wt, undefined)
+    expect(ctx?.worktree.is_worktree).toBe(true)
+    expect(ctx?.worktree.claude_managed).toBe(true)
+  })
+
+  it("no remote: both worktrees share repoKey = main checkout path", () => {
+    const main = makeMain()
+    const wt = join(main, "..", `${main.split("/").pop()}-wt2`)
+    git(main, "worktree", "add", "-q", "-b", "feat/z", wt)
+    dirs.push(realpathSync(wt))
+    expect(resolveRepoContext(main, undefined)?.repoKey).toBe(main)
+    expect(resolveRepoContext(wt, undefined)?.repoKey).toBe(main)
+  })
+
+  it("remote: repoKey is the normalized remote", () => {
+    const main = makeMain("https://github.com/test/parity.git")
+    expect(resolveRepoContext(main, undefined)?.repoKey).toBe("github.com/test/parity")
+  })
+
+  it("repo without commits still resolves (unborn HEAD)", () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "continuity-gate-unborn-")))
+    dirs.push(dir)
+    git(dir, "init", "-q")
+    const ctx = resolveRepoContext(dir, undefined)
+    expect(ctx?.toplevel).toBe(dir)
+    expect(ctx?.worktree.is_worktree).toBe(false)
   })
 })
