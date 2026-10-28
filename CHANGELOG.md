@@ -37,7 +37,9 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 ### Known limits
 
 - Team-mode Worker has no message routes yet, so `message_send` and the other
-  message tools fail there; the loop continues without announcements.
+  message tools fail there. In team mode the loop runs, but announcements and
+  message replies aren't seen until the Worker's message routes land, so
+  activity comes only from handoffs.
 
 ## [0.1.0-alpha.4] - 2026-10-28
 

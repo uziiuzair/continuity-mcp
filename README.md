@@ -93,8 +93,9 @@ but never count. When the agent finishes its own work it says so once and drops 
 tier, and stays responsive; after that, an active tick resets to the start of the current tier, not tier 1.
 
 Cron jobs are session-only and expire after 7 days. Known limit: the team-mode
-Worker has no message routes yet, so announcements and message tools fail there
-and the loop runs without them.
+Worker has no message routes yet. In team mode the loop runs, but announcements
+and message replies aren't seen until the Worker's message routes land, so
+activity comes only from handoffs.
 
 ## Install
 

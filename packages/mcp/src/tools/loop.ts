@@ -145,6 +145,18 @@ export function computeTick(
 
   if (kind === "already_running" || kind === "set_cron") {
     const loop = input.cron_job_id !== undefined ? { ...prev, cron_job_id: input.cron_job_id } : prev
+    if (kind === "already_running" && loop.cron_job_id === null) {
+      // No cron was ever recorded (e.g. CronCreate failed or the session was
+      // restarted): ask for one at the current tier so the loop can recover.
+      const minutes = minutesFor(loop.tier)
+      const verdict: LoopVerdict = {
+        action: "reschedule",
+        interval_minutes: minutes,
+        cron: cronFor(minutes),
+        reason: "loop running, no cron recorded",
+      }
+      return { loop, result: ok(loop, emptyNew(), false, verdict) }
+    }
     const reason = kind === "already_running" ? "loop already running" : "cron job id recorded"
     return { loop, result: ok(loop, emptyNew(), false, keep(loop, reason)) }
   }
@@ -189,6 +201,9 @@ export function computeTick(
 
 // Backend reads for one tick. Errors propagate: a partial fetch would prune
 // `seen` and re-report old items, so a failed tick is better left unconsumed.
+// One exception: the team-mode Worker has no /messages routes yet, so in
+// remote mode a messagePending failure reads as "no messages" and the loop
+// runs on handoffs alone.
 // Responses are read since the previous tick (not the backend's 30-minute
 // default), since slow tiers tick 30+ minutes apart. Inbound needs no window:
 // pending messages stay pending until answered, so they cannot age out.
@@ -200,7 +215,11 @@ export async function fetchLoopTickData(
   const resolvedSince = prev ? { resolved_since: new Date(prev.last_tick_at).toISOString() } : {}
   const [active, pending, handoffs, decisions] = await Promise.all([
     ctx.backend.listActive({ same_repo_key: ctx.repoKey, exclude_session: sessionId, max_age_seconds: 300 }),
-    ctx.backend.messagePending({ session_id: sessionId, ...resolvedSince }),
+    ctx.mode === "remote"
+      ? ctx.backend
+          .messagePending({ session_id: sessionId, ...resolvedSince })
+          .catch(() => ({ inbound: [], resolved: [] }))
+      : ctx.backend.messagePending({ session_id: sessionId, ...resolvedSince }),
     ctx.backend.handoffPending({ agent_session_id: sessionId }),
     ctx.backend.decisionRecent({ limit: 10 }),
   ])

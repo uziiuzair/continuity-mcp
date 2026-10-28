@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ActiveSession, ContinuityBackend, Decision, Handoff, Message } from "@continuity/shared"
+import { LOOP_CRON_PROMPT } from "@continuity/shared"
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { type LoopState, type SessionState, readState, writeState } from "../state.js"
@@ -140,12 +141,23 @@ describe("computeTick", () => {
   })
 
   it("start twice → second is keep, state unchanged", () => {
-    const loop = { ...started(), quiet_streak: 3 }
+    const loop = { ...started(), quiet_streak: 3, cron_job_id: "job-1" }
     const r = computeTick(loop, { ...empty(), inbound: [msg("m9")] }, { start: true, task: "other" }, NOW + 5)
     expect(r.loop).toEqual(loop)
     expect(r.result).toMatchObject({ ok: true, active: false, verdict: { action: "keep", interval_minutes: 5 } })
     if (!r.result.ok) throw new Error("expected ok")
     expect(r.result.new.messages).toEqual([])
+  })
+
+  it("start on a running loop with no cron id → reschedule at the current tier", () => {
+    const loop = { ...started(), tier: 2 as const, quiet_streak: 3 }
+    const r = computeTick(loop, empty(), { start: true }, NOW + 5)
+    expect(r.loop).toEqual(loop)
+    expect(r.result).toMatchObject({
+      ok: true,
+      active: false,
+      verdict: { action: "reschedule", interval_minutes: 10, cron: "*/10 * * * *", reason: "loop running, no cron recorded" },
+    })
   })
 
   it("no loop → no_loop", () => {
@@ -214,7 +226,10 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-function tool(sessionId: string | null = "me"): (input?: Record<string, unknown>) => Promise<Record<string, unknown>> {
+function tool(
+  sessionId: string | null = "me",
+  opts: { mode?: ToolContext["mode"]; pendingError?: Error } = {},
+): (input?: Record<string, unknown>) => Promise<Record<string, unknown>> {
   const record =
     <T>(method: string, out: () => T) =>
     async (args: unknown) => {
@@ -223,7 +238,10 @@ function tool(sessionId: string | null = "me"): (input?: Record<string, unknown>
     }
   const backend = {
     listActive: record("listActive", () => ({ sessions: backendData.sameRepoActive })),
-    messagePending: record("messagePending", () => ({ inbound: backendData.inbound, resolved: backendData.resolved })),
+    messagePending: record("messagePending", () => {
+      if (opts.pendingError) throw opts.pendingError
+      return { inbound: backendData.inbound, resolved: backendData.resolved }
+    }),
     handoffPending: record("handoffPending", () => ({ handoffs: backendData.handoffs })),
     decisionRecent: record("decisionRecent", () => ({ decisions: backendData.decisions })),
   } as unknown as ContinuityBackend
@@ -231,7 +249,7 @@ function tool(sessionId: string | null = "me"): (input?: Record<string, unknown>
     backend,
     getSessionId: () => sessionId,
     repoFullName: "o/r",
-    mode: "local",
+    mode: opts.mode ?? "local",
     cwdHash: HASH,
     repoKey: "github.com/o/r",
     worktree: { is_worktree: false, path: "/repo", branch: "main", main_checkout: null, claude_managed: false },
@@ -286,6 +304,37 @@ describe("loop_tick handler", () => {
     expect(readState(HASH)?.loop?.cron_job_id).toBe("job-1")
   })
 
+  it("start, no cron id recorded, start again → reschedule so the cron is recreated", async () => {
+    writeState(HASH, baseState())
+    expect(await tool()({ start: true, task: "build" })).toMatchObject({ verdict: { action: "reschedule" } })
+    calls = []
+    const again = await tool()({ start: true })
+    expect(again).toMatchObject({
+      ok: true,
+      loop: { cron_job_id: null },
+      verdict: { action: "reschedule", interval_minutes: 5, cron: "*/5 * * * *", reason: "loop running, no cron recorded" },
+    })
+    expect(calls).toEqual([])
+    await tool()({ cron_job_id: "job-2" })
+    expect(await tool()({ start: true })).toMatchObject({ verdict: { action: "keep", reason: "loop already running" } })
+  })
+
+  it("remote mode: a messagePending failure reads as no messages", async () => {
+    writeState(HASH, baseState({ loop: started() }))
+    backendData = { ...empty(), handoffs: [handoff("h1")] }
+    const run = tool("me", { mode: "remote", pendingError: new Error("404 /messages/pending") })
+    expect(await run({})).toMatchObject({ ok: true, active: true, new: { messages: [], responses: [], handoffs: [{ id: "h1" }] } })
+    expect(await run({ start: true, task: "x" })).toMatchObject({ ok: true })
+  })
+
+  it("local mode: a messagePending failure propagates and the tick is not consumed", async () => {
+    const loop = started()
+    writeState(HASH, baseState({ loop }))
+    backendData = { ...empty(), handoffs: [handoff("h1")] }
+    await expect(tool("me", { pendingError: new Error("db down") })({})).rejects.toThrow("db down")
+    expect(readState(HASH)?.loop).toEqual(loop)
+  })
+
   it("a tick passes resolved_since = last_tick_at", async () => {
     const last = Date.UTC(2026, 9, 28, 12, 0, 0)
     writeState(HASH, baseState({ loop: { ...started(), last_tick_at: last } }))
@@ -310,5 +359,22 @@ describe("loop_tick handler", () => {
     expect(await tool()({})).toEqual({ ok: false, reason: "no_loop", hint: "CronDelete this job" })
     expect(calls).toEqual([])
     expect(readState(HASH)).toEqual(baseState())
+  })
+})
+
+describe("skills embed the cron prompt verbatim", () => {
+  const skill = (name: string) =>
+    readFileSync(new URL(`../../../../plugin/skills/${name}/SKILL.md`, import.meta.url), "utf8")
+
+  it("loop/SKILL.md: every CronCreate prompt is LOOP_CRON_PROMPT", () => {
+    const text = skill("loop")
+    const prompts = [...text.matchAll(/prompt: "([^"]*)"/g)].map((m) => m[1])
+    expect(prompts.length).toBeGreaterThanOrEqual(2)
+    for (const p of prompts) expect(p).toBe(LOOP_CRON_PROMPT)
+  })
+
+  it("start/SKILL.md embeds no divergent prompt", () => {
+    const prompts = [...skill("start").matchAll(/prompt: "([^"]*)"/g)].map((m) => m[1])
+    for (const p of prompts) expect(p).toBe(LOOP_CRON_PROMPT)
   })
 })

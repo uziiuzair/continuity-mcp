@@ -21,10 +21,16 @@ while you are idle, may fire late, and recurring jobs expire after 7 days.
 
 1. Call `loop_tick({ start: true, task })` with a one-line description of your task.
    Starting is idempotent. If it errors or returns `ok: false`, tell the user in one
-   line and don't create a cron job. If a loop already exists it returns `keep` and
-   the current `loop.cron_job_id`: report that state and do NOT create another cron.
-   Otherwise it returns `session.worktree` and a `reschedule` verdict with the first
-   cron (`*/5 * * * *`).
+   line and don't create a cron job. If a loop already exists, don't announce again:
+   - It returns `keep` and the current `loop.cron_job_id`: call `CronList`. If a job
+     whose prompt has the `[continuity-loop]` marker exists, report the loop's state
+     and stop here. If none does, the cron is gone: do steps 4 and 5 below.
+   - It returns `reschedule` with reason `loop running, no cron recorded`: call
+     `CronList`. If a `[continuity-loop]` job exists, pass its id with
+     `loop_tick({ cron_job_id })`; otherwise do steps 4 and 5 below.
+
+   For a new loop it returns `session.worktree` and a `reschedule` verdict with the
+   first cron (`*/5 * * * *`).
 2. Announce yourself: `message_send({ broadcast: true, scope: "repo", body })`, no
    `requires_response`. The body names your task and the branch and path from
    `session.worktree` (if `is_worktree` is false, that is the plain checkout's
@@ -47,9 +53,10 @@ while you are idle, may fire late, and recurring jobs expire after 7 days.
    prompt are the same items, so don't report them twice.
 4. Apply `verdict`:
    - `keep`: do nothing.
-   - `reschedule`: `CronDelete` the old id, `CronCreate({ cron: verdict.cron, prompt: "[continuity-loop] Continuity Loop tick: call loop_tick and follow the continuity:loop skill.", recurring: true })`,
+   - `reschedule`: `CronDelete` the old id (`loop.cron_job_id` from the previous
+     `loop_tick` result), `CronCreate({ cron: verdict.cron, prompt: "[continuity-loop] Continuity Loop tick: call loop_tick and follow the continuity:loop skill.", recurring: true })`,
      then `loop_tick({ cron_job_id: <new id> })`.
-   - `stop`: `CronDelete` the id and tell the user in one line that the loop ended
+   - `stop`: `CronDelete` the id (`loop.cron_job_id`) and tell the user in one line that the loop ended
      and why (`verdict.reason`).
 
 If the Stop hook asks you to `CronDelete` a cron job of a loop that has ended, do it.
