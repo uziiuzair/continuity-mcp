@@ -6,6 +6,8 @@
 
 import type { ActiveSession, Decision, Handoff, Message, RecentFileActivity } from "@continuity/shared"
 import { minutesLeft } from "./guard.js"
+import type { SessionState } from "./state.js"
+import { worktreeSegment } from "./snapshot.js"
 
 // Bounded so the state file can't grow without limit. Sessions/decisions/
 // handoffs are tracked by id (announce-once, even if they drop out of the
@@ -30,6 +32,9 @@ export type SnapshotData = {
   handoffs: Handoff[]
   messages: { inbound: Message[]; resolved: Message[] }
   repoFullName: string | null
+  repoKey?: string | null
+  mainCheckout?: string | null
+  loop?: SessionState["loop"] | null
 }
 
 function ago(iso: string, nowMs: number): string {
@@ -65,7 +70,7 @@ export function computeDeltas(
   data: SnapshotData,
   nowMs: number,
 ): { text: string | null; memory: DeltaMemory } {
-  const { active, activity, decisions, handoffs, messages, repoFullName } = data
+  const { active, activity, decisions, handoffs, messages, repoFullName, mainCheckout } = data
 
   const highWater = activity.reduce<string | null>(
     (hw, a) => maxIso(hw, a.touched_at),
@@ -127,7 +132,7 @@ export function computeDeltas(
 
   for (const s of newSessions.slice(0, 10)) {
     const focus = s.current_focus ? ` · "${oneLine(s.current_focus)}"` : ""
-    lines.push(`- New session: ${s.agent_label} (${s.user_name})${focus}`)
+    lines.push(`- New session: ${s.agent_label} (${s.user_name})${worktreeSegment(s, mainCheckout)}${focus}`)
   }
   for (const a of newActivity.slice(0, 15)) {
     const overlap =

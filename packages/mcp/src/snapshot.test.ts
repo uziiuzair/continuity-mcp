@@ -196,4 +196,76 @@ describe("renderSnapshot", () => {
     expect(out).toContain("Decision [orm] requires your ack")
     expect(out).toContain('message_respond(m3, "<ack>")')
   })
+
+  describe("worktree, same repo, loop", () => {
+    const START = "- Other sessions are active in this repo: start the Continuity Loop (`continuity:loop` skill) unless one is already running."
+    const loopState = (o: object = {}) =>
+      ({ started_at: 1, task: null, tier: 2, quiet_streak: 3, own_work_done: false, cron_job_id: "cron-9", last_tick_at: 1,
+        seen: { messages: [], responses: [], handoffs: [], decisions: [], sessions: [] }, ...o }) as never
+
+    it("renders a worktree segment relative to the main checkout, with same repo", () => {
+      const out = renderSnapshot({
+        ...empty, repoKey: "k", mainCheckout: "/r/main",
+        active: [session({ is_worktree: true, branch: "feat/x", worktree_path: "/r/main/.claude/worktrees/x", repo_key: "k", current_focus: "auth" })],
+      })
+      expect(out).toMatch(/- worker \(Uzi\) · worktree feat\/x @ \.claude\/worktrees\/x · "auth" · \d+s ago · same repo/)
+    })
+
+    it("renders an absolute path outside the main checkout and (detached) for a null branch", () => {
+      const out = renderSnapshot({
+        ...empty, repoKey: "k", mainCheckout: "/r/main",
+        active: [session({ is_worktree: true, branch: null, worktree_path: "/elsewhere/wt", repo_key: "other" })],
+      })
+      expect(out).toContain("- worker (Uzi) · worktree (detached) @ /elsewhere/wt · ")
+      expect(out).not.toContain("same repo\n")
+      expect(out).not.toContain(START)
+    })
+
+    it("omits the worktree segment for non-worktree sessions", () => {
+      const out = renderSnapshot({ ...empty, active: [session({ worktree_path: "/x", branch: "b" })] })
+      expect(out).not.toContain("worktree b")
+    })
+
+    it("adds the start cue under the sessions list only for same-repo sessions with no loop", () => {
+      const same = { ...empty, repoKey: "k", active: [session({ repo_key: "k" })] }
+      const out = renderSnapshot(same)
+      expect(out).toMatch(new RegExp(`### Other active sessions\\n- worker[^\\n]*\\n${START.replace(/[()`.]/g, "\\$&")}`))
+      expect(renderSnapshot({ ...same, loop: loopState() })).not.toContain(START)
+      expect(renderSnapshot({ ...empty, repoKey: "k", active: [session({ repo_key: "z" })] })).not.toContain(START)
+      expect(renderSnapshot({ ...empty, repoKey: "k", active: [session({ repo_key: null })] })).not.toContain(START)
+    })
+
+    it("renders the loop section, with cron pending when no job id", () => {
+      expect(renderSnapshot({ ...empty, loop: loopState() })).toContain(
+        "### Continuity Loop\n- running · tier 2 (10 min) · quiet 3 · cron cron-9",
+      )
+      expect(renderSnapshot({ ...empty, loop: loopState({ cron_job_id: null, tier: 1 }) })).toContain(
+        "- running · tier 1 (5 min) · quiet 3 · cron pending",
+      )
+    })
+
+    it("is additive: with no worktree, same-repo or loop the live section is unchanged", () => {
+      const out = renderSnapshot({ ...empty, repoKey: "k", active: [session({ current_focus: "auth" })] })
+      const live = out.slice(out.indexOf("### Other active sessions"))
+      expect(live).toMatch(/^### Other active sessions\n- worker \(Uzi\) · "auth" · \d+s ago\n\n### Files other sessions are touching \(30m\)\n- none$/)
+      const intro = out.slice(0, out.indexOf("\n\n## Live snapshot"))
+      expect(intro.split("\n").filter((l) => !l.includes("continuity:loop")).join("\n")).toContain(
+        "- Record calls others must respect with `decision_write`",
+      )
+    })
+
+    it("stays under 10,000 chars with maximal data", () => {
+      const long = "x".repeat(300)
+      const out = renderSnapshot({
+        ...empty, repoKey: "k", mainCheckout: "/r/main", repoFullName: "o/r",
+        active: Array.from({ length: 12 }, (_, i) => session({ session_id: `s${i}`, agent_label: `agent-${i}`, is_worktree: true, branch: "feat/" + "b".repeat(40), worktree_path: `/r/main/.claude/worktrees/${"w".repeat(40)}${i}`, repo_key: "k", current_focus: long })),
+        activity: Array.from({ length: 20 }, (_, i) => activity({ file_path: `packages/mcp/src/deep/path/file-${i}.ts` })),
+        decisions: Array.from({ length: 7 }, (_, i) => decision({ id: `d${i}`, content: long })),
+        handoffs: Array.from({ length: 7 }, (_, i) => handoff({ id: `h${i}`, context: long })),
+        messages: { inbound: Array.from({ length: 7 }, (_, i) => message({ id: `m${i}`, body: long })), resolved: [] },
+        loop: loopState(),
+      })
+      expect(out.length).toBeLessThan(10_000)
+    })
+  })
 })

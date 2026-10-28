@@ -3,7 +3,9 @@
 // and prints this markdown; the hook injects it as additionalContext. Backend-
 // agnostic: works identically for the local and remote flavors.
 
-import type { ActiveSession, Decision, Handoff, Message, RecentFileActivity } from "@continuity/shared"
+import { isAbsolute, relative } from "node:path"
+import { type ActiveSession, type Decision, type Handoff, LOOP_TIERS, type Message, type RecentFileActivity } from "@continuity/shared"
+import type { SessionState } from "./state.js"
 
 function ago(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
@@ -20,6 +22,19 @@ function oneLine(s: string): string {
   return t.length > 100 ? `${t.slice(0, 100)}…` : t
 }
 
+// " · worktree <branch> @ <path>" for a session running in a linked worktree,
+// else "". The path is relative to the repo's main checkout when inside it.
+export function worktreeSegment(s: ActiveSession, mainCheckout: string | null | undefined): string {
+  if (!s.is_worktree) return ""
+  const branch = s.branch ?? "(detached)"
+  let path = s.worktree_path ?? "?"
+  if (mainCheckout && s.worktree_path) {
+    const rel = relative(mainCheckout, s.worktree_path)
+    if (rel && !rel.startsWith("..") && !isAbsolute(rel)) path = rel
+  }
+  return ` · worktree ${branch} @ ${path}`
+}
+
 export function renderSnapshot(data: {
   active: ActiveSession[]
   activity: RecentFileActivity[]
@@ -27,8 +42,11 @@ export function renderSnapshot(data: {
   handoffs: Handoff[]
   messages: { inbound: Message[]; resolved: Message[] }
   repoFullName: string | null
+  repoKey?: string | null
+  mainCheckout?: string | null
+  loop?: SessionState["loop"] | null
 }): string {
-  const { active, activity, decisions, handoffs, messages, repoFullName } = data
+  const { active, activity, decisions, handoffs, messages, repoFullName, repoKey, mainCheckout, loop } = data
   const lines = [
     "# Continuity is active for this session",
     "",
@@ -37,6 +55,7 @@ export function renderSnapshot(data: {
     "- Before editing a shared file, call `agent_file_activity_recent`; if another live session is already in it, coordinate or pick different work instead of colliding.",
     "- Contested edits are blocked until you coordinate: send `message_send({ to_session, about_file, body })` and the block lifts when they respond — or expires on its own. Answer messages you receive with `message_respond(id, response)` (or `message_dismiss(id, reason)`); response-required messages gate your edits and turn-end until handled.",
     "- When you start a distinct piece of work, call `agent_list_active` first; if a session already covers it, hand off or step aside.",
+    "- When other sessions share this repo, start the Continuity Loop (`continuity:loop` skill) to keep polling for their messages and handoffs.",
     "- Record calls others must respect with `decision_write`, and claim issues with `task_claim`, so work isn't duplicated.",
     "- These are MCP tools from the `continuity` server. If they aren't loaded in your session (deferred tools), load them first (e.g. via ToolSearch); the `continuity:*` skills describe the same workflows.",
     "",
@@ -49,8 +68,11 @@ export function renderSnapshot(data: {
   else
     for (const s of active.slice(0, 10)) {
       const focus = s.current_focus ? ` · "${s.current_focus}"` : ""
-      lines.push(`- ${s.agent_label} (${s.user_name})${focus} · ${ago(s.last_seen_at)}`)
+      const sameRepo = repoKey && s.repo_key === repoKey ? " · same repo" : ""
+      lines.push(`- ${s.agent_label} (${s.user_name})${worktreeSegment(s, mainCheckout)}${focus} · ${ago(s.last_seen_at)}${sameRepo}`)
     }
+  if (!loop && repoKey && active.slice(0, 10).some((s) => s.repo_key === repoKey))
+    lines.push("- Other sessions are active in this repo: start the Continuity Loop (`continuity:loop` skill) unless one is already running.")
 
   lines.push("", "### Files other sessions are touching (30m)")
   if (activity.length === 0) lines.push("- none")
@@ -88,6 +110,11 @@ export function renderSnapshot(data: {
         lines.push(`- ${oneLine(m.body)} → message_respond(${m.id}, "<reply>")${req}`)
       }
     }
+  }
+
+  if (loop) {
+    const m = LOOP_TIERS[loop.tier - 1]?.minutes ?? "?"
+    lines.push("", "### Continuity Loop", `- running · tier ${loop.tier} (${m} min) · quiet ${loop.quiet_streak} · ${loop.cron_job_id ? `cron ${loop.cron_job_id}` : "cron pending"}`)
   }
 
   return lines.join("\n")

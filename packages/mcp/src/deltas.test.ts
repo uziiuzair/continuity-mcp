@@ -261,3 +261,17 @@ describe("computeDeltas: messages", () => {
     expect(text).toContain('message_respond(m1, ')
   })
 })
+
+describe("computeDeltas: worktree sessions", () => {
+  const seed = (): DeltaMemory => computeDeltas(null, empty, NOW).memory
+  it("renders the worktree segment for a joined session (relative and absolute)", () => {
+    const rel = computeDeltas(seed(), { ...empty, mainCheckout: "/r/main", active: [session({ session_id: "n1", is_worktree: true, branch: "feat/x", worktree_path: "/r/main/.claude/worktrees/x" })] }, NOW)
+    expect(rel.text).toContain("- New session: worker (Uzi) · worktree feat/x @ .claude/worktrees/x")
+    const abs = computeDeltas(seed(), { ...empty, mainCheckout: "/r/main", active: [session({ session_id: "n2", is_worktree: true, branch: null, worktree_path: "/else/wt" })] }, NOW)
+    expect(abs.text).toContain("- New session: worker (Uzi) · worktree (detached) @ /else/wt")
+  })
+  it("leaves non-worktree joins unchanged", () => {
+    const r = computeDeltas(seed(), { ...empty, active: [session({ session_id: "n3" })] }, NOW)
+    expect(r.text).toBe("## Continuity update (since your last prompt)\n- New session: worker (Uzi)")
+  })
+})

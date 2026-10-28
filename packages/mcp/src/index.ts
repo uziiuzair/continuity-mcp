@@ -89,6 +89,9 @@ async function fetchCoordinationData(rt: Runtime, sessionIdOrNull: string | null
     handoffs,
     messages,
     repoFullName: repo.repoFullName,
+    repoKey: repo.repoKey,
+    mainCheckout: repo.worktree.main_checkout,
+    loop: readState(repo.cwdHash)?.loop ?? null,
   }
 }
 
@@ -197,6 +200,9 @@ async function runDoctor(rt: Runtime | null): Promise<void> {
     } catch (err) {
       out.push(`backend: UNREACHABLE — ${err instanceof Error ? err.message : String(err)}`)
     }
+    const wt = rt.repo.worktree
+    out.push(wt.is_worktree ? `worktree: yes (branch ${wt.branch ?? "detached"}, main checkout ${wt.main_checkout ?? "unknown"})` : "worktree: no")
+    out.push(rt.claudeSessionId ? `identity: claude session ${rt.claudeSessionId}` : "identity: per-directory (no Claude session id)")
     const state = readState(rt.repo.cwdHash)
     out.push(`session state: ${state?.session_id ? `session ${state.session_id}` : "none yet"} (${stateFilePath(rt.repo.cwdHash)})`)
   }
