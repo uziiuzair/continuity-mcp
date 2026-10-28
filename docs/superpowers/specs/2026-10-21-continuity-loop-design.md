@@ -258,15 +258,40 @@ siblings for the loop.
 Based on the current hooks reference (code.claude.com/docs/en/hooks, read
 2026-10-21) and plugin skills docs.
 
-1. **Remove the `WorktreeCreate` hook (bug fix).** A command hook on
-   `WorktreeCreate` *replaces* Claude Code's default git worktree creation: its
-   stdout must be the new worktree's path, and a missing path fails creation.
-   Ours prints nothing and reads `worktree_path`/`path`, but the event's input
-   only carries `name`. Delete the hook entry and
-   `plugin/scripts/worktree-create.mjs`. Check-in on entering a worktree is
-   covered by `CwdChanged`, and by `SessionStart` for `claude --worktree`.
+Items 1, 2 and 2b ship first, on their own, as hotfix **0.1.0-alpha.4**
+(plan Task 0). Confirmed in the field on 2026-10-28: with alpha.3 enabled,
+`claude --worktree <slug>` fails with `WorktreeCreate hook failed: hook
+succeeded but returned no worktree path`. That breaks `--worktree`,
+`EnterWorktree`, `isolation: "worktree"` subagents, workflow agents and
+background sessions for every plugin user.
+
+1. **Remove the `WorktreeCreate` and `WorktreeRemove` hooks (bug fix).**
+   - A command hook on `WorktreeCreate` *replaces* Claude Code's default git
+     worktree creation (and `.worktreeinclude` processing). Its last stdout
+     line must be the new worktree's path, and a missing path fails creation.
+     Ours prints nothing and reads `worktree_path`/`path`, but the event's
+     input only carries `name`. `async: true` doesn't help: Claude Code still
+     waits and rejects the empty output.
+   - `WorktreeRemove`: per the docs, a hook that exits 0 "counts as removed.
+     Claude Code reads nothing else from the hook, so make sure your hook
+     deleted the directory." Ours only checks out and always exits 0, so it
+     can leave worktrees on disk, and without our WorktreeCreate hook it has
+     nothing legitimate to clean up.
+   - Delete both hook entries and `plugin/scripts/worktree-create.mjs` /
+     `worktree-remove.mjs`. Checkout stays in `SessionEnd`.
 2. **`CwdChanged` reads `new_cwd`.** The event's input has `old_cwd` /
-   `new_cwd`. Use `input.new_cwd || input.cwd`.
+   `new_cwd`. Use `input.new_cwd || input.cwd`. Note: `CwdChanged` fires only
+   when a *shell command* changes directory (`cd`), not on worktree entry.
+2b. **Observe worktree moves via `PostToolUse` on `EnterWorktree|ExitWorktree`.**
+   This is observe-only (unlike WorktreeCreate) and re-checks in from the
+   hook's `cwd`, which is the worktree root after entry. `claude --worktree`
+   needs nothing extra: SessionStart's `cwd` is already the worktree root.
+   Verify both by hand before release.
+2c. **README known limit.** A plugin's hooks can't observe the worktree that
+   `--worktree --tmux` creates (Claude Code creates it before loading
+   plugins). Since there is no observe-only "worktree created" event,
+   Continuity picks the session up on its first prompt (`--prompt-sync` uses
+   the event's `cwd`).
 3. **Stop hook guards the loop's cron.** Stop input now includes
    `session_crons[]` (`id`, `schedule`, `recurring`, `prompt`). The Stop script
    (network-free, reads the state file only) checks:

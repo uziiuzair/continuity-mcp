@@ -33,6 +33,25 @@
 
 ---
 
+### Task 0: Hotfix 0.1.0-alpha.4: stop breaking worktrees (ship first, separately)
+
+Ships before everything else, on its own branch off `main` (`fix/worktree-hooks`), not on `feat/continuity-loop`. Afterwards, rebase `feat/continuity-loop` onto it. Source: field report 2026-10-28 (`claude --worktree` fails with `WorktreeCreate hook failed: hook succeeded but returned no worktree path`) and spec "Hook updates" items 1–2c.
+
+**Files:**
+- Delete: `plugin/scripts/worktree-create.mjs`, `plugin/scripts/worktree-remove.mjs`
+- Modify: `plugin/hooks/hooks.json` (remove the `WorktreeCreate` and `WorktreeRemove` entries; add a `PostToolUse` entry with matcher `EnterWorktree|ExitWorktree`, `async: true`, running the new script), `plugin/scripts/cwd-changed.mjs`, `plugin/.claude-plugin/plugin.json` + `plugin/package.json` (version `0.1.0-alpha.4`), `.claude-plugin/marketplace.json` (version, if pinned there), `CHANGELOG.md`, `README.md`
+- Create: `plugin/scripts/worktree-moved.mjs`, which runs `runShim(input.cwd || process.cwd(), ["--checkin"])`, fail-open, in the same style as `cwd-changed.mjs`
+
+- [ ] **Step 1: Reproduce.** With the alpha.3 plugin installed, run `claude --worktree hotfix-check` in a scratch repo. Expected: `WorktreeCreate hook failed: hook succeeded but returned no worktree path`.
+- [ ] **Step 2: Make the changes** listed above. `cwd-changed.mjs` uses `input.new_cwd || input.cwd || process.cwd()`. README gets a "Worktrees" note: Continuity never creates or removes worktrees; `--worktree --tmux` sessions are picked up on their first prompt.
+- [ ] **Step 3: Validate** with `claude plugin validate plugin` and `pnpm test`. Expected: valid, PASS.
+- [ ] **Step 4: Manual checks** (record the results in the PR):
+  - `claude --worktree hotfix-check` creates `.claude/worktrees/hotfix-check`, and `.worktreeinclude` files are copied.
+  - `agent_list_active` from a second session shows the worktree session.
+  - In a normal session, ask Claude to `EnterWorktree`; then the session is still listed and `--doctor` from the worktree shows it active.
+  - Exiting and removing the worktree deletes the directory (`ls .claude/worktrees`).
+- [ ] **Step 5: Commit** `fix(plugin): stop replacing Claude Code's worktree create/remove (alpha.4)`, open a PR against `main`, and after the user merges it, rebase `feat/continuity-loop` onto `main`.
+
 ### Task 1: Spike: get Claude's `session_id` into the MCP shim
 
 **Gate task.** If neither mechanism works reliably, STOP and report back; do not continue to Task 2.
@@ -226,9 +245,10 @@
 
 ### Task 8: Hook updates
 
+The WorktreeCreate/WorktreeRemove removal, the `new_cwd` fix and the `EnterWorktree|ExitWorktree` hook already shipped in Task 0. This task adds the Stop guard and `current_dir` recording; `worktree-moved.mjs` (Task 0) also passes `session_id` and records `current_dir` through `--checkin`.
+
 **Files:**
-- Delete: `plugin/scripts/worktree-create.mjs`. Remove the `WorktreeCreate` entry from `plugin/hooks/hooks.json`.
-- Modify: `plugin/scripts/cwd-changed.mjs`, `plugin/scripts/stop.mjs`, `packages/mcp/src/guard.ts`, `plugin/scripts/lib/guard.mjs`, `packages/mcp/src/index.ts` (`--checkin` writes `current_dir`)
+- Modify: `plugin/scripts/cwd-changed.mjs`, `plugin/scripts/worktree-moved.mjs`, `plugin/scripts/stop.mjs`, `packages/mcp/src/guard.ts`, `plugin/scripts/lib/guard.mjs`, `packages/mcp/src/index.ts` (`--checkin` writes `current_dir`)
 - Test: `packages/mcp/src/guard.test.ts`, `packages/mcp/src/guard.parity.test.ts`
 
 **Interfaces:**
@@ -243,9 +263,9 @@
 
 - [ ] **Step 1: Failing tests** for each `loopCronDecision` case, an unmarked cron that is ignored, and parity cases.
 - [ ] **Step 2: Run** `pnpm --filter @continuity/mcp exec vitest run src/guard.test.ts src/guard.parity.test.ts`. Expected: FAIL.
-- [ ] **Step 3: Implement**, delete the WorktreeCreate hook, and update the CwdChanged hook.
+- [ ] **Step 3: Implement** the guard, and pass `session_id` + record `current_dir` from the CwdChanged and worktree-moved hooks.
 - [ ] **Step 4: Run** the full suite, then `claude plugin validate plugin`. Expected: PASS and valid.
-- [ ] **Step 5: Commit** `fix(plugin): drop WorktreeCreate hook; Stop guards orphaned loop crons`.
+- [ ] **Step 5: Commit** `feat(plugin): Stop guards orphaned loop crons; hooks record current_dir`.
 
 ### Task 9: Snapshot, deltas, doctor
 
@@ -279,7 +299,7 @@
 
 - [ ] **Step 1: Write `loop/SKILL.md`.** Frontmatter `name: loop`. The `description` triggers on "other active sessions in this repo", "working in parallel with sibling sessions", "start the Continuity Loop", "a `[continuity-loop]` tick". The body covers the start sequence (`loop_tick({start, task})`, then a repo-scoped broadcast announcement with task + worktree/branch + path, then `agent_report_focus`, then `CronCreate` with the cron and `LOOP_CRON_PROMPT`, then `loop_tick({cron_job_id})`). It then covers each tick (call `loop_tick`, answer every message, act on or decline handoffs, report from `loop_tick` only and not the injected deltas, apply the verdict), the own-work-done rule (call `loop_tick({own_work_done: true})` once, then send a repo-scoped "done" note via `message_send`; `loop_tick` never sends messages itself), `no_loop` means CronDelete, and the rule that sessions sharing a checkout are fine (identity is per Claude session).
 - [ ] **Step 2: Write `start/SKILL.md`.** Frontmatter `name: start`, description "Start the Continuity Loop now: announce your task, worktree and path to sibling sessions in this repo, and check Continuity on a self-backing-off schedule." `argument-hint: "[task description]"`. The body says: if `$ARGUMENTS` is given use it as the task, else summarize the current assignment; then follow the `continuity:loop` start sequence. Do not set `disable-model-invocation`.
-- [ ] **Step 3: Docs.** README section "Continuity Loop" (ladder table, what counts as a reply, `/continuity:start`), CHANGELOG entry (loop, per-session identity, worktree awareness, WorktreeCreate hook removal as a bug fix), and an architecture note on identity.
+- [ ] **Step 3: Docs.** README section "Continuity Loop" (ladder table, what counts as a reply, `/continuity:start`), CHANGELOG entry (loop, per-session identity, worktree awareness), and an architecture note on identity.
 - [ ] **Step 4: Verify** with `claude plugin validate plugin`. Expected: valid, with skills `continuity:loop` and `continuity:start` listed.
 - [ ] **Step 5: Commit** `feat(plugin): Continuity Loop skill and /continuity:start`.
 
