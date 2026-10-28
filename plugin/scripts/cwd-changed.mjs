@@ -6,7 +6,7 @@ import { readStdinJson } from "./lib/stdin.mjs"
 
 async function main() {
   const input = await readStdinJson()
-  runShim(input.cwd || process.cwd(), ["--checkin"])
+  runShim(input.new_cwd || input.cwd || process.cwd(), ["--checkin"])
 }
 
 main().catch(() => process.exit(0))

@@ -75,42 +75,6 @@
         ]
       }
     ],
-    "WorktreeCreate": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.mjs"],
-            "async": true,
-            "env": {
-              "CONTINUITY_API_URL": "${user_config.apiUrl}",
-              "CONTINUITY_API_KEY": "${user_config.apiKey}",
-              "CONTINUITY_REPO_ALLOWLIST": "${user_config.repoAllowlist}",
-              "CONTINUITY_DB_PATH": "${user_config.dbPath}"
-            }
-          }
-        ]
-      }
-    ],
-    "WorktreeRemove": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/worktree-remove.mjs"],
-            "async": true,
-            "env": {
-              "CONTINUITY_API_URL": "${user_config.apiUrl}",
-              "CONTINUITY_API_KEY": "${user_config.apiKey}",
-              "CONTINUITY_REPO_ALLOWLIST": "${user_config.repoAllowlist}",
-              "CONTINUITY_DB_PATH": "${user_config.dbPath}"
-            }
-          }
-        ]
-      }
-    ],
     "TaskCreated": [
       {
         "hooks": [
@@ -190,6 +154,23 @@
             "async": true,
             "env": {
               "CONTINUITY_REPO_ALLOWLIST": "${user_config.repoAllowlist}"
+            }
+          }
+        ]
+      },
+      {
+        "matcher": "EnterWorktree|ExitWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/worktree-moved.mjs"],
+            "async": true,
+            "env": {
+              "CONTINUITY_API_URL": "${user_config.apiUrl}",
+              "CONTINUITY_API_KEY": "${user_config.apiKey}",
+              "CONTINUITY_REPO_ALLOWLIST": "${user_config.repoAllowlist}",
+              "CONTINUITY_DB_PATH": "${user_config.dbPath}"
             }
           }
         ]

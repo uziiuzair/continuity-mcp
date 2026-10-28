@@ -11,6 +11,27 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+## [0.1.0-alpha.4] - 2026-10-28
+
+### Fixed
+
+- **`claude --worktree` works again.** alpha.3 registered a `WorktreeCreate` hook,
+  and a hook on that event *replaces* Claude Code's git worktree creation and must
+  print the new worktree's path. Ours printed nothing, so every `--worktree`
+  session, `EnterWorktree` call, `isolation: "worktree"` subagent, workflow agent
+  and background session failed with `WorktreeCreate hook failed: hook succeeded
+  but returned no worktree path`. The hook is removed, so `.worktreeinclude` is
+  processed again too.
+- **Removed worktrees are deleted again.** The `WorktreeRemove` hook is removed
+  as well: a hook that exits 0 counts as having removed the worktree, and ours
+  never deleted anything. Checkout stays in `SessionEnd`.
+- **`CwdChanged` uses the new directory.** It now reads the event's `new_cwd`.
+
+### Changed
+
+- Worktree moves are observed with `PostToolUse` on `EnterWorktree|ExitWorktree`,
+  which re-checks the session in from inside the worktree.
+
 ## [0.1.0-alpha.3] - 2026-07-17
 
 ### Added

@@ -235,7 +235,7 @@ async function runDoctor(rt: Runtime | null): Promise<void> {
 }
 
 // `--checkin`: establish presence for this cwd, then exit. Run by hooks that
-// signal a new working context (CwdChanged, WorktreeCreate).
+// signal a new working context (CwdChanged, EnterWorktree/ExitWorktree).
 async function runCheckin(rt: Runtime): Promise<void> {
   const { repo, backend, agentLabel } = rt
   try {
@@ -247,7 +247,7 @@ async function runCheckin(rt: Runtime): Promise<void> {
 }
 
 // `--checkout`: mark this cwd's session gone and clear the rendezvous file. Run
-// by SessionEnd and WorktreeRemove.
+// by SessionEnd.
 async function runCheckout(rt: Runtime): Promise<void> {
   const { repo, backend } = rt
   const sessionId = readState(repo.cwdHash)?.session_id ?? null

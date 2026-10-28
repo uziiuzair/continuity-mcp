@@ -12,8 +12,7 @@ Run it for the **local** flavor first (zero-config), then the **team** flavor.
 > payload shape were copied from an internal (Arlo) deployment and have **not** been
 > confirmed against the public Claude Code harness:
 >
-> - The non-standard event names `CwdChanged`, `WorktreeCreate`, `WorktreeRemove`,
->   `TaskCreated`, and `TaskCompleted`.
+> - The non-standard event names `CwdChanged`, `TaskCreated`, and `TaskCompleted`.
 > - The `UserPromptSubmit` payload (whether the prompt text actually arrives in the
 >   shape the focus-sync hook expects).
 >
@@ -151,15 +150,22 @@ checkout.
 **Broken looks like:** changing cwd produces no re-check-in. Treat `CwdChanged` as
 unverified until confirmed against the live harness.
 
-### 4e. WorktreeCreate / WorktreeRemove — ⚠️ unverified event names
+### 4e. Worktrees (`--worktree`, EnterWorktree / ExitWorktree)
 
-- [ ] If reproducible, create a git worktree → expect a **re-check-in** for it.
-- [ ] Remove the worktree → expect a **checkout**.
-- [ ] **Confirm:** via `agent_list_active` / `agent_sessions` rows appearing and
-      disappearing for the worktree's cwd.
+Continuity must never register `WorktreeCreate` or `WorktreeRemove` hooks: a hook
+on either event *replaces* Claude Code's own git worktree handling (alpha.3 shipped
+one and broke `claude --worktree`). Worktree moves are observed with `PostToolUse`
+on `EnterWorktree|ExitWorktree` instead.
 
-**Broken looks like:** worktree create/remove has no presence effect — event names
-unverified.
+- [ ] `claude --worktree check` → the worktree is created under
+      `.claude/worktrees/check` and `.worktreeinclude` files are copied into it.
+- [ ] From another session, `agent_list_active` shows the worktree session.
+- [ ] In a normal session, ask Claude to enter a worktree (EnterWorktree) → the
+      session is still listed, and `--doctor` run from the worktree shows it active.
+- [ ] Exit and remove the worktree → the directory is gone from `.claude/worktrees`.
+
+**Broken looks like:** `WorktreeCreate hook failed: hook succeeded but returned no
+worktree path`, or a removed worktree left on disk.
 
 ### 4f. TaskCreated / TaskCompleted (audit) — ⚠️ unverified event names
 
@@ -179,8 +185,7 @@ unverified.
 | `UserPromptSubmit` | submit prompt | `agent_get` focus / `agent_sessions.focus` | ⚠️ payload |
 | `SessionEnd` | end session | `agent_list_active` no longer shows it | standard |
 | `CwdChanged` | change cwd | re-check-in row | ⚠️ event name |
-| `WorktreeCreate` | create worktree | re-check-in row | ⚠️ event name |
-| `WorktreeRemove` | remove worktree | checkout | ⚠️ event name |
+| `PostToolUse` (`EnterWorktree\|ExitWorktree`) | enter/exit worktree | re-check-in row | standard |
 | `TaskCreated` | create task | `audit_recent` | ⚠️ event name |
 | `TaskCompleted` | complete task | `audit_recent` | ⚠️ event name |
 
