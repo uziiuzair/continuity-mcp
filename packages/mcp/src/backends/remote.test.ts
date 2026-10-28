@@ -148,3 +148,43 @@ describe("error handling", () => {
     await expect(backend.listActive({})).rejects.toThrow(/401/)
   })
 })
+
+describe("worktree + repo_key wire fields", () => {
+  const wt = { worktree_path: "/w/a", branch: "feat/a", is_worktree: true, repo_key: "k1" }
+
+  it("checkin sends the new fields in the body", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { session_id: "s1", reused: false }))
+    await backend.checkin({ agent_label: "a", cwd_hash: "h", ...wt })
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(url).toBe(`${SERVER}/agent/checkin`)
+    expect(JSON.parse(init.body)).toMatchObject(wt)
+  })
+
+  it("heartbeat sends only the fields it was given", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }))
+    await backend.heartbeat({ session_id: "s1", branch: "feat/b" })
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(url).toBe(`${SERVER}/agent/heartbeat`)
+    expect(JSON.parse(init.body)).toEqual({ session_id: "s1", branch: "feat/b" })
+  })
+
+  it("listActive sends same_repo_key (including empty) and maps the new session fields", async () => {
+    const session = { session_id: "s1", agent_label: "a", user_name: "u", ...wt, status: "active" }
+    fetchMock.mockResolvedValue(jsonResponse(200, { sessions: [session] }))
+    const res = await backend.listActive({ same_repo_key: "k1" })
+    expect(new URL(fetchMock.mock.calls[0]![0] as string).searchParams.get("same_repo_key")).toBe("k1")
+    expect(res.sessions[0]).toMatchObject(wt)
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { sessions: [] }))
+    await backend.listActive({ same_repo_key: "" })
+    expect(new URL(fetchMock.mock.calls[1]![0] as string).searchParams.get("same_repo_key")).toBe("")
+  })
+
+  it("messageSend forwards scope and repo_key", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { message_ids: [], delivered: 0, expires_at: "x" }))
+    await backend.messageSend({ from_session: "s1", broadcast: true, kind: "message", body: "hi", scope: "repo", repo_key: "k1" })
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(url).toBe(`${SERVER}/messages/send`)
+    expect(JSON.parse(init.body)).toMatchObject({ scope: "repo", repo_key: "k1" })
+  })
+})

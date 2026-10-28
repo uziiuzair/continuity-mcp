@@ -22,6 +22,13 @@
       "when": 1784233625421,
       "tag": "0002_useful_kingpin",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793197150045,
+      "tag": "0003_massive_misty_knight",
+      "breakpoints": true
     }
   ]
 }

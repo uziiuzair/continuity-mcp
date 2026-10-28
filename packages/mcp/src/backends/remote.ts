@@ -21,6 +21,7 @@ import type {
   Handoff,
   HandoffCreateArgs,
   HandoffPendingArgs,
+  HeartbeatArgs,
   ListActiveArgs,
   Message,
   MessageListArgs,
@@ -95,7 +96,7 @@ export class RemoteBackend implements ContinuityBackend, TeamBackend {
     return this.post<CheckinResult>("/agent/checkin", args)
   }
 
-  async heartbeat(args: { session_id: string; current_focus?: string }): Promise<void> {
+  async heartbeat(args: HeartbeatArgs): Promise<void> {
     await this.post("/agent/heartbeat", args)
   }
 

@@ -17,6 +17,10 @@ agentRoutes.post("/checkin", async (c) => {
     cwd_hash?: unknown
     project_scope?: unknown
     current_focus?: unknown
+    worktree_path?: unknown
+    branch?: unknown
+    is_worktree?: unknown
+    repo_key?: unknown
   }>()
   if (typeof body.agent_label !== "string" || !body.agent_label)
     return c.json({ error: "invalid_body", detail: "agent_label required" }, 400)
@@ -24,6 +28,10 @@ agentRoutes.post("/checkin", async (c) => {
     return c.json({ error: "invalid_body", detail: "cwd_hash required" }, 400)
   const projectScope = typeof body.project_scope === "string" ? body.project_scope : null
   const currentFocus = typeof body.current_focus === "string" ? body.current_focus : null
+  const worktreePath = typeof body.worktree_path === "string" ? body.worktree_path : null
+  const branch = typeof body.branch === "string" ? body.branch : null
+  const isWorktree = typeof body.is_worktree === "boolean" ? body.is_worktree : null
+  const repoKey = typeof body.repo_key === "string" ? body.repo_key : null
   const now = new Date()
 
   const upserted = await c.var.db
@@ -34,6 +42,10 @@ agentRoutes.post("/checkin", async (c) => {
       cwdHash: body.cwd_hash,
       projectScope,
       currentFocus,
+      worktreePath,
+      branch,
+      isWorktree,
+      repoKey,
       status: "active",
       startedAt: now,
       lastSeenAt: now,
@@ -41,7 +53,17 @@ agentRoutes.post("/checkin", async (c) => {
     .onConflictDoUpdate({
       target: [agentSessions.userId, agentSessions.cwdHash],
       targetWhere: sql`status <> 'gone'`,
-      set: { agentLabel: body.agent_label, projectScope, currentFocus, status: "active", lastSeenAt: now, endedAt: null },
+      set: {
+        agentLabel: body.agent_label,
+        projectScope,
+        currentFocus,
+        worktreePath,
+        branch,
+        isWorktree,
+        repoKey,
+        status: "active", lastSeenAt: now,
+        endedAt: null,
+      },
     })
     .returning({ id: agentSessions.id, isNew: sql<boolean>`(xmax = 0)` })
 
@@ -50,13 +72,33 @@ agentRoutes.post("/checkin", async (c) => {
   return c.json({ session_id: row.id, reused: !row.isNew })
 })
 
-// POST /agent/heartbeat — body: { session_id, current_focus? }
+// POST /agent/heartbeat — body: { session_id, current_focus?, worktree_path?, branch?, is_worktree?, repo_key? }
+// A column is updated only when its field is passed (null clears it).
 agentRoutes.post("/heartbeat", async (c) => {
-  const body = await c.req.json<{ session_id?: unknown; current_focus?: unknown }>()
+  const body = await c.req.json<{
+    session_id?: unknown
+    current_focus?: unknown
+    worktree_path?: unknown
+    branch?: unknown
+    is_worktree?: unknown
+    repo_key?: unknown
+  }>()
   if (typeof body.session_id !== "string" || !body.session_id)
     return c.json({ error: "invalid_body", detail: "session_id required" }, 400)
-  const set: { lastSeenAt: Date; status: "active"; currentFocus?: string } = { lastSeenAt: new Date(), status: "active" }
+  const set: {
+    lastSeenAt: Date
+    status: "active"
+    currentFocus?: string
+    worktreePath?: string | null
+    branch?: string | null
+    isWorktree?: boolean | null
+    repoKey?: string | null
+  } = { lastSeenAt: new Date(), status: "active" }
   if (typeof body.current_focus === "string") set.currentFocus = body.current_focus
+  if (body.worktree_path !== undefined) set.worktreePath = typeof body.worktree_path === "string" ? body.worktree_path : null
+  if (body.branch !== undefined) set.branch = typeof body.branch === "string" ? body.branch : null
+  if (body.is_worktree !== undefined) set.isWorktree = typeof body.is_worktree === "boolean" ? body.is_worktree : null
+  if (body.repo_key !== undefined) set.repoKey = typeof body.repo_key === "string" ? body.repo_key : null
   const updated = await c.var.db
     .update(agentSessions)
     .set(set)
@@ -84,7 +126,7 @@ agentRoutes.post("/checkout", async (c) => {
   return c.json({ ok: true })
 })
 
-// GET /agent/list_active?project_scope=&max_age_seconds=&exclude_session=
+// GET /agent/list_active?project_scope=&max_age_seconds=&exclude_session=&same_repo_key=
 agentRoutes.get("/list_active", async (c) => {
   const maxAge = Number(c.req.query("max_age_seconds") ?? "300")
   const windowSeconds = Number.isFinite(maxAge) && maxAge > 0 ? maxAge : 300
@@ -95,6 +137,11 @@ agentRoutes.get("/list_active", async (c) => {
   const conditions = [inArray(agentSessions.status, ["active", "idle"]), gt(agentSessions.lastSeenAt, cutoff)]
   if (projectScope) conditions.push(eq(agentSessions.projectScope, projectScope))
   if (excludeSession) conditions.push(ne(agentSessions.id, excludeSession))
+  // Provided-but-empty same_repo_key matches nothing (never widens to all).
+  const sameRepoKey = c.req.query("same_repo_key")
+  if (sameRepoKey !== undefined) {
+    conditions.push(sameRepoKey === "" ? sql`false` : eq(agentSessions.repoKey, sameRepoKey))
+  }
 
   const rows = await c.var.db
     .select({ session: agentSessions, userName: users.name })

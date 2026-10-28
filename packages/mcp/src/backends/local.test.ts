@@ -365,6 +365,12 @@ describe("worktree + repo scoping", () => {
     expect(same.sessions.map((s) => s.agent_label).sort()).toEqual(["a", "b"])
   })
 
+  it("listActive with an empty same_repo_key matches no sessions", async () => {
+    await backend.checkin({ agent_label: "a", cwd_hash: "e1", repo_key: "k1" })
+    await backend.checkin({ agent_label: "d", cwd_hash: "e2" })
+    expect((await backend.listActive({ same_repo_key: "" })).sessions).toEqual([])
+  })
+
   it("repo-scoped broadcast skips other repos", async () => {
     const me = await backend.checkin({ agent_label: "me", cwd_hash: "b0", repo_key: "k1" })
     const mate = await backend.checkin({ agent_label: "mate", cwd_hash: "b1", repo_key: "k1" })

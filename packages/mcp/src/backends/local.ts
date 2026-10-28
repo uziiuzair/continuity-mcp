@@ -241,9 +241,13 @@ export class LocalBackend implements ContinuityBackend {
       where.push("project_scope = ?")
       params.push(args.project_scope)
     }
-    if (args.same_repo_key) {
-      where.push("repo_key = ?")
-      params.push(args.same_repo_key)
+    if (args.same_repo_key !== undefined) {
+      // Provided-but-empty matches nothing (never widens to all sessions).
+      if (args.same_repo_key === "") where.push("1 = 0")
+      else {
+        where.push("repo_key = ?")
+        params.push(args.same_repo_key)
+      }
     }
     if (args.exclude_session) {
       where.push("id <> ?")
