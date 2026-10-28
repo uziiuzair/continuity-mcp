@@ -35,5 +35,20 @@ export function openLocalDb(path: string): LocalDb {
   // Idempotent table + index creation (zero-config: no migration step). The DDL
   // also carries the partial UNIQUE indexes + CHECK constraints.
   db.exec(sqliteSchema.SQLITE_DDL)
+  // CREATE TABLE IF NOT EXISTS leaves a DB made by an older release as-is, so
+  // add any agent_sessions columns it predates.
+  const have = new Set(
+    (db.prepare("PRAGMA table_info(agent_sessions)").all() as { name: string }[]).map((c) => c.name),
+  )
+  for (const col of sqliteSchema.AGENT_SESSIONS_ADDED_COLUMNS) {
+    if (!have.has(col.name)) {
+      try {
+        db.exec(`ALTER TABLE agent_sessions ADD COLUMN ${col.name} ${col.type}`)
+      } catch (err) {
+        // Another process added it between our check and the ALTER.
+        if (!/duplicate column/i.test(String(err))) throw err
+      }
+    }
+  }
   return db
 }

@@ -25,6 +25,10 @@ export const agentSessions = sqliteTable(
     currentFocus: text("current_focus"),
     claimedIssueNumber: integer("claimed_issue_number"),
     claimedRepoFullName: text("claimed_repo_full_name"),
+    worktreePath: text("worktree_path"),
+    branch: text("branch"),
+    isWorktree: integer("is_worktree"),
+    repoKey: text("repo_key"),
     status: text("status", { enum: ["active", "idle", "gone"] })
       .notNull()
       .default("active"),
@@ -192,6 +196,10 @@ CREATE TABLE IF NOT EXISTS agent_sessions (
   current_focus TEXT,
   claimed_issue_number INTEGER,
   claimed_repo_full_name TEXT,
+  worktree_path TEXT,
+  branch TEXT,
+  is_worktree INTEGER,
+  repo_key TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','idle','gone')),
   started_at TEXT NOT NULL,
   last_seen_at TEXT NOT NULL,
@@ -313,3 +321,16 @@ CREATE INDEX IF NOT EXISTS messages_to_status_idx ON messages (to_agent_session_
 CREATE INDEX IF NOT EXISTS messages_from_status_idx ON messages (from_agent_session_id, status);
 CREATE INDEX IF NOT EXISTS messages_expires_idx ON messages (expires_at);
 `
+
+/**
+ * Columns added to agent_sessions after the first release. `CREATE TABLE IF NOT
+ * EXISTS` leaves an older table untouched, so the opener adds any of these that
+ * are missing (PRAGMA table_info + ALTER TABLE ADD COLUMN). Keep in sync with
+ * the table above.
+ */
+export const AGENT_SESSIONS_ADDED_COLUMNS: readonly { name: string; type: string }[] = [
+  { name: "worktree_path", type: "TEXT" },
+  { name: "branch", type: "TEXT" },
+  { name: "is_worktree", type: "INTEGER" },
+  { name: "repo_key", type: "TEXT" },
+]

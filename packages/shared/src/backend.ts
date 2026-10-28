@@ -29,14 +29,26 @@ import type {
   TaskClaim,
 } from "./types.js"
 
+/** Where the session is working. All optional: an omitted field is left as-is on heartbeat. */
+export type WorktreeFields = {
+  worktree_path?: string | null
+  branch?: string | null
+  is_worktree?: boolean
+  repo_key?: string | null
+}
+
 export type CheckinArgs = {
   agent_label: string
   cwd_hash: string
   project_scope?: string | null
   current_focus?: string | null
-}
+} & WorktreeFields
+
+export type HeartbeatArgs = { session_id: string; current_focus?: string } & WorktreeFields
 
 export type ListActiveArgs = {
+  /** Only sessions whose repo_key equals this. Callers must not pass an empty key. */
+  same_repo_key?: string
   project_scope?: string
   max_age_seconds?: number
   exclude_session?: string
@@ -108,6 +120,9 @@ export type MessageSendArgs = {
   from_session: string
   to_session?: string
   broadcast?: boolean
+  /** Broadcast reach. Default "all". "repo" reaches only sessions with `repo_key`; a missing/empty key reaches no one. */
+  scope?: "all" | "repo"
+  repo_key?: string | null
   kind: MessageKind
   body: string
   requires_response?: boolean
@@ -126,7 +141,7 @@ export type MessageListArgs = {
 export interface ContinuityBackend {
   // ---- Presence (driven by the shim/hooks, not the model) ----
   checkin(args: CheckinArgs): Promise<CheckinResult>
-  heartbeat(args: { session_id: string; current_focus?: string }): Promise<void>
+  heartbeat(args: HeartbeatArgs): Promise<void>
   checkout(args: { session_id: string; reason?: string }): Promise<void>
   listActive(args: ListActiveArgs): Promise<{ sessions: ActiveSession[] }>
   getSession(id: string): Promise<{ session: SessionDetail | null }>

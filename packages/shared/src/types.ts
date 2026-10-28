@@ -52,6 +52,10 @@ export type ActiveSession = {
   current_focus: string | null
   claimed_issue_number: number | null
   claimed_repo_full_name: string | null
+  worktree_path: string | null
+  branch: string | null
+  is_worktree: boolean
+  repo_key: string | null
   status: SessionStatus
   last_seen_at: string
 }
@@ -65,6 +69,10 @@ export type SessionDetail = {
   current_focus: string | null
   claimed_issue_number: number | null
   claimed_repo_full_name: string | null
+  worktree_path: string | null
+  branch: string | null
+  is_worktree: boolean
+  repo_key: string | null
   status: SessionStatus
   started_at: string
   last_seen_at: string

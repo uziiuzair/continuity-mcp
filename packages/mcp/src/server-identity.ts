@@ -15,6 +15,22 @@ export type ServerIdentity = {
   sessionId: string | null
 }
 
+// Worktree + same-repo fields every checkin carries. Stored columns only:
+// main_checkout / claude_managed are re-derivable from the gate.
+export function sessionRepoFields(repo: RepoContext): {
+  worktree_path: string
+  branch: string | null
+  is_worktree: boolean
+  repo_key: string
+} {
+  return {
+    worktree_path: repo.worktree.path,
+    branch: repo.worktree.branch,
+    is_worktree: repo.worktree.is_worktree,
+    repo_key: repo.repoKey,
+  }
+}
+
 export function deriveAgentLabel(repoFullName: string | null, cwdHash: string): string {
   const fromEnv = process.env.CONTINUITY_AGENT_ID
   if (fromEnv?.trim()) return fromEnv.trim()
@@ -50,7 +66,11 @@ export function createIdentitySync(
     ident.agentLabel = deriveAgentLabel(repo.repoFullName, repo.cwdHash)
     ident.sessionId = readState(repo.cwdHash)?.session_id ?? null
     try {
-      const res = await deps.backend.checkin({ agent_label: ident.agentLabel, cwd_hash: repo.cwdHash })
+      const res = await deps.backend.checkin({
+        agent_label: ident.agentLabel,
+        cwd_hash: repo.cwdHash,
+        ...sessionRepoFields(repo),
+      })
       ident.sessionId = res.session_id
       persistSessionId(repo.cwdHash, res.session_id, ident.agentLabel)
     } catch {

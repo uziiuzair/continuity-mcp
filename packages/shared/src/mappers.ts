@@ -33,6 +33,10 @@ type SessionRowLike = {
   currentFocus: string | null
   claimedIssueNumber: number | null
   claimedRepoFullName: string | null
+  worktreePath: string | null
+  branch: string | null
+  isWorktree: number | boolean | null
+  repoKey: string | null
   status: SessionStatus
   startedAt: TimestampLike
   lastSeenAt: TimestampLike
@@ -49,6 +53,10 @@ export function toSessionDetail(r: SessionRowLike): SessionDetail {
     current_focus: r.currentFocus,
     claimed_issue_number: r.claimedIssueNumber,
     claimed_repo_full_name: r.claimedRepoFullName,
+    worktree_path: r.worktreePath,
+    branch: r.branch,
+    is_worktree: Boolean(r.isWorktree),
+    repo_key: r.repoKey,
     status: r.status,
     started_at: toIso(r.startedAt),
     last_seen_at: toIso(r.lastSeenAt),
@@ -63,6 +71,10 @@ type ActiveSessionRowLike = {
   currentFocus: string | null
   claimedIssueNumber: number | null
   claimedRepoFullName: string | null
+  worktreePath: string | null
+  branch: string | null
+  isWorktree: number | boolean | null
+  repoKey: string | null
   status: SessionStatus
   lastSeenAt: TimestampLike
 }
@@ -76,6 +88,10 @@ export function toActiveSession(r: ActiveSessionRowLike, userName: string): Acti
     current_focus: r.currentFocus,
     claimed_issue_number: r.claimedIssueNumber,
     claimed_repo_full_name: r.claimedRepoFullName,
+    worktree_path: r.worktreePath,
+    branch: r.branch,
+    is_worktree: Boolean(r.isWorktree),
+    repo_key: r.repoKey,
     status: r.status,
     last_seen_at: toIso(r.lastSeenAt),
   }

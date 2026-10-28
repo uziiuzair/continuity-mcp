@@ -19,6 +19,13 @@ export function _schemaParityChecks(): void {
   toSessionDetail({} as pg.AgentSessionRow)
   toSessionDetail({} as sq.AgentSessionRow)
 
+  // The worktree/repo columns must exist on both flavors (types differ only in is_worktree).
+  type WorktreeCols = "worktreePath" | "branch" | "isWorktree" | "repoKey"
+  const _pgCols: Record<WorktreeCols, unknown> = {} as Pick<pg.AgentSessionRow, WorktreeCols>
+  const _sqCols: Record<WorktreeCols, unknown> = {} as Pick<sq.AgentSessionRow, WorktreeCols>
+  void _pgCols
+  void _sqCols
+
   toActiveSession({} as pg.AgentSessionRow, "")
   toActiveSession({} as sq.AgentSessionRow, "")
 

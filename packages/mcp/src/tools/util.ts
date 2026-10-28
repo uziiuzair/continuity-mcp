@@ -1,5 +1,6 @@
 import type { ContinuityBackend } from "@continuity/shared"
 import type { TeamBackend } from "../backends/remote.js"
+import type { WorktreeInfo } from "../gate.js"
 
 // Runtime context the tools close over. `getSessionId` is read lazily because
 // the shim may re-adopt a session id (idempotent checkin reuse) after startup.
@@ -13,6 +14,10 @@ export type ToolContext = {
   // Handlers use this to read/write the session state file's gate caches
   // (pending_inbound, collision_sent) synchronously, in-process.
   cwdHash: string
+  // Same-repo identity (shared by every worktree of a repo) and this checkout's
+  // worktree facts. Getters: they follow the identity across a /clear switch.
+  repoKey: string
+  worktree: WorktreeInfo
 }
 
 // Context for the team-flavor-only tools (github_*, plan_*, escalate). These

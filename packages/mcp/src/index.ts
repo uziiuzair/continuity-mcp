@@ -15,7 +15,7 @@ import { type SettingsLike, duplicateInstallWarning, listContinuityInstalls } fr
 import { type RepoContext, resolveRepoContext } from "./gate.js"
 import { buildOthersCache, buildPendingInbound, reconcileCollisionSent } from "./guard.js"
 import { resolveClaudeSessionId } from "./identity.js"
-import { type ServerIdentity, createIdentitySync, deriveAgentLabel, syncBeforeEachTool } from "./server-identity.js"
+import { type ServerIdentity, createIdentitySync, deriveAgentLabel, sessionRepoFields, syncBeforeEachTool } from "./server-identity.js"
 import { renderSnapshot } from "./snapshot.js"
 import { type SessionState, clearState, persistSessionId, readState, stateFilePath, writeState } from "./state.js"
 import { registerAgentTools } from "./tools/agent.js"
@@ -122,7 +122,7 @@ async function runSnapshot(rt: Runtime): Promise<void> {
   const { repo, backend, agentLabel } = rt
   let sessionId = readState(repo.cwdHash)?.session_id ?? null
   try {
-    const res = await backend.checkin({ agent_label: agentLabel, cwd_hash: repo.cwdHash })
+    const res = await backend.checkin({ agent_label: agentLabel, cwd_hash: repo.cwdHash, ...sessionRepoFields(repo) })
     sessionId = res.session_id
     persistSessionId(repo.cwdHash, sessionId, agentLabel)
   } catch {
@@ -150,7 +150,7 @@ async function runPromptSync(rt: Runtime, focus: string): Promise<void> {
   let sessionId = readState(repo.cwdHash)?.session_id ?? null
   try {
     if (!sessionId) {
-      const res = await backend.checkin({ agent_label: agentLabel, cwd_hash: repo.cwdHash })
+      const res = await backend.checkin({ agent_label: agentLabel, cwd_hash: repo.cwdHash, ...sessionRepoFields(repo) })
       sessionId = res.session_id
       persistSessionId(repo.cwdHash, sessionId, agentLabel)
     }
@@ -231,7 +231,7 @@ async function runDoctor(rt: Runtime | null): Promise<void> {
 async function runCheckin(rt: Runtime): Promise<void> {
   const { repo, backend, agentLabel } = rt
   try {
-    const res = await backend.checkin({ agent_label: agentLabel, cwd_hash: repo.cwdHash })
+    const res = await backend.checkin({ agent_label: agentLabel, cwd_hash: repo.cwdHash, ...sessionRepoFields(repo) })
     persistSessionId(repo.cwdHash, res.session_id, agentLabel)
   } catch {
     // fail-open
@@ -261,7 +261,7 @@ async function runFocus(rt: Runtime, focus: string): Promise<void> {
   let sessionId = readState(repo.cwdHash)?.session_id ?? null
   try {
     if (!sessionId) {
-      const res = await backend.checkin({ agent_label: agentLabel, cwd_hash: repo.cwdHash })
+      const res = await backend.checkin({ agent_label: agentLabel, cwd_hash: repo.cwdHash, ...sessionRepoFields(repo) })
       sessionId = res.session_id
       persistSessionId(repo.cwdHash, sessionId, agentLabel)
     }
@@ -302,7 +302,11 @@ async function runServer(rt: Runtime): Promise<void> {
   // on cwd) so the hook and the shim converge on one session row.
   ident.sessionId = readState(ident.repo.cwdHash)?.session_id ?? null
   try {
-    const res = await backend.checkin({ agent_label: ident.agentLabel, cwd_hash: ident.repo.cwdHash })
+    const res = await backend.checkin({
+      agent_label: ident.agentLabel,
+      cwd_hash: ident.repo.cwdHash,
+      ...sessionRepoFields(ident.repo),
+    })
     ident.sessionId = res.session_id
     persistSessionId(ident.repo.cwdHash, ident.sessionId, ident.agentLabel)
   } catch {
@@ -326,6 +330,12 @@ async function runServer(rt: Runtime): Promise<void> {
     mode,
     get cwdHash() {
       return ident.repo.cwdHash
+    },
+    get repoKey() {
+      return ident.repo.repoKey
+    },
+    get worktree() {
+      return ident.repo.worktree
     },
   }
   registerAgentTools(server, toolContext)
@@ -359,7 +369,11 @@ async function runServer(rt: Runtime): Promise<void> {
     if (state?.session_id) ident.sessionId = state.session_id
     try {
       if (!ident.sessionId) {
-        const res = await backend.checkin({ agent_label: ident.agentLabel, cwd_hash: cwdHash })
+        const res = await backend.checkin({
+          agent_label: ident.agentLabel,
+          cwd_hash: cwdHash,
+          ...sessionRepoFields(ident.repo),
+        })
         ident.sessionId = res.session_id
         persistSessionId(cwdHash, ident.sessionId, ident.agentLabel)
       } else {

@@ -1,7 +1,13 @@
 import { LIVE_CLAIM_STATUSES } from "@continuity/shared"
+import { mkdtempSync, rmSync } from "node:fs"
+import { createRequire } from "node:module"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { beforeEach, describe, expect, it } from "vitest"
 import { type LocalDb, openLocalDb } from "./db.js"
 import { LocalBackend } from "./local.js"
+
+const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite")
 
 let db: LocalDb
 let backend: LocalBackend
@@ -304,5 +310,121 @@ describe("messages", () => {
     expect(out.messages.some((m) => m.body === "one")).toBe(true)
     const inbNone = await backend.messageList({ session_id: a.session_id, direction: "inbound", status: "pending" })
     expect(inbNone.messages.some((m) => m.body === "one")).toBe(false)
+  })
+})
+
+describe("worktree + repo scoping", () => {
+  const wt = {
+    worktree_path: "/r/.claude/worktrees/x",
+    branch: "feat/x",
+    is_worktree: true,
+    repo_key: "repo-key-1",
+  }
+
+  it("checkin stores and returns worktree fields", async () => {
+    const { session_id } = await backend.checkin({ agent_label: "a", cwd_hash: "w1", ...wt })
+    const { session } = await backend.getSession(session_id)
+    expect(session).toMatchObject(wt)
+    const { sessions } = await backend.listActive({})
+    expect(sessions[0]).toMatchObject(wt)
+  })
+
+  it("sessions without worktree fields read back as null/false", async () => {
+    const { session_id } = await backend.checkin({ agent_label: "a", cwd_hash: "w0" })
+    const { session } = await backend.getSession(session_id)
+    expect(session).toMatchObject({ worktree_path: null, branch: null, is_worktree: false, repo_key: null })
+  })
+
+  it("re-checkin updates branch", async () => {
+    const first = await backend.checkin({ agent_label: "a", cwd_hash: "w2", ...wt })
+    const second = await backend.checkin({ agent_label: "a", cwd_hash: "w2", ...wt, branch: "feat/y" })
+    expect(second.reused).toBe(true)
+    const { session } = await backend.getSession(first.session_id)
+    expect(session?.branch).toBe("feat/y")
+  })
+
+  it("heartbeat updates worktree columns only when passed", async () => {
+    const { session_id } = await backend.checkin({ agent_label: "a", cwd_hash: "w3", ...wt })
+    await backend.heartbeat({ session_id })
+    expect((await backend.getSession(session_id)).session).toMatchObject(wt)
+    await backend.heartbeat({ session_id, branch: "feat/z", is_worktree: false })
+    expect((await backend.getSession(session_id)).session).toMatchObject({
+      ...wt,
+      branch: "feat/z",
+      is_worktree: false,
+    })
+  })
+
+  it("listActive same_repo_key filters", async () => {
+    await backend.checkin({ agent_label: "a", cwd_hash: "r1", repo_key: "k1" })
+    await backend.checkin({ agent_label: "b", cwd_hash: "r2", repo_key: "k1" })
+    await backend.checkin({ agent_label: "c", cwd_hash: "r3", repo_key: "k2" })
+    await backend.checkin({ agent_label: "d", cwd_hash: "r4" })
+    expect((await backend.listActive({})).sessions).toHaveLength(4)
+    const same = await backend.listActive({ same_repo_key: "k1" })
+    expect(same.sessions.map((s) => s.agent_label).sort()).toEqual(["a", "b"])
+  })
+
+  it("repo-scoped broadcast skips other repos", async () => {
+    const me = await backend.checkin({ agent_label: "me", cwd_hash: "b0", repo_key: "k1" })
+    const mate = await backend.checkin({ agent_label: "mate", cwd_hash: "b1", repo_key: "k1" })
+    await backend.checkin({ agent_label: "other", cwd_hash: "b2", repo_key: "k2" })
+    await backend.checkin({ agent_label: "unkeyed", cwd_hash: "b3" })
+    const base = { from_session: me.session_id, broadcast: true, kind: "message" as const, body: "hi" }
+    const scoped = await backend.messageSend({ ...base, scope: "repo", repo_key: "k1" })
+    expect(scoped.delivered).toBe(1)
+    const inbox = await backend.messageList({ session_id: mate.session_id })
+    expect(inbox.messages).toHaveLength(1)
+    // default scope still reaches everyone
+    const all = await backend.messageSend(base)
+    expect(all.delivered).toBe(3)
+  })
+
+  it("repo-scoped broadcast with missing or empty repo_key reaches no one", async () => {
+    const me = await backend.checkin({ agent_label: "me", cwd_hash: "n0", repo_key: "k1" })
+    await backend.checkin({ agent_label: "mate", cwd_hash: "n1", repo_key: "k1" })
+    const base = { from_session: me.session_id, broadcast: true, kind: "message" as const, body: "hi", scope: "repo" as const }
+    expect((await backend.messageSend(base)).delivered).toBe(0)
+    expect((await backend.messageSend({ ...base, repo_key: "" })).delivered).toBe(0)
+  })
+})
+
+describe("sqlite migration", () => {
+  const OLD_TABLE = `CREATE TABLE agent_sessions (
+    id TEXT PRIMARY KEY, agent_label TEXT NOT NULL, cwd_hash TEXT NOT NULL, project_scope TEXT,
+    current_focus TEXT, claimed_issue_number INTEGER, claimed_repo_full_name TEXT,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','idle','gone')),
+    started_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, ended_at TEXT)`
+
+  it("opening a DB created by the previous DDL adds the columns", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cont-mig-"))
+    try {
+      const path = join(dir, "old.db")
+      const old = new DatabaseSync(path)
+      old.exec(OLD_TABLE)
+      old
+        .prepare("INSERT INTO agent_sessions (id, agent_label, cwd_hash, started_at, last_seen_at) VALUES (?,?,?,?,?)")
+        .run("old1", "legacy", "h", new Date().toISOString(), new Date().toISOString())
+      old.close()
+      const migrated = openLocalDb(path)
+      const b = new LocalBackend(migrated)
+      expect((await b.getSession("old1")).session).toMatchObject({ branch: null, repo_key: null, is_worktree: false })
+      const { session_id } = await b.checkin({ agent_label: "n", cwd_hash: "h2", ...{ repo_key: "k", branch: "m" } })
+      expect((await b.getSession(session_id)).session).toMatchObject({ repo_key: "k", branch: "m" })
+      migrated.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("opening twice does not fail", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cont-mig-"))
+    try {
+      const path = join(dir, "twice.db")
+      openLocalDb(path).close()
+      expect(() => openLocalDb(path).close()).not.toThrow()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

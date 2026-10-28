@@ -18,13 +18,18 @@ export function registerAgentTools(server: McpServer, ctx: ToolContext): void {
           .optional()
           .describe("Only include sessions seen within this window. Default 300."),
         project_scope: z.string().optional(),
+        same_repo: z
+          .boolean()
+          .optional()
+          .describe("Only sessions in this repo, including its other worktrees. Default false."),
       },
     },
-    async ({ max_age_seconds, project_scope }) =>
+    async ({ max_age_seconds, project_scope, same_repo }) =>
       asText(
         await ctx.backend.listActive({
           max_age_seconds,
           project_scope,
+          ...(same_repo ? { same_repo_key: ctx.repoKey } : {}),
           exclude_session: ctx.getSessionId() ?? undefined,
         }),
       ),

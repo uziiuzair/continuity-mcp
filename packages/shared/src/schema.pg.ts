@@ -38,6 +38,10 @@ export const agentSessions = pgTable(
     currentFocus: text("current_focus"),
     claimedIssueNumber: integer("claimed_issue_number"),
     claimedRepoFullName: text("claimed_repo_full_name"),
+    worktreePath: text("worktree_path"),
+    branch: text("branch"),
+    isWorktree: boolean("is_worktree"),
+    repoKey: text("repo_key"),
     status: text("status", { enum: ["active", "idle", "gone"] })
       .notNull()
       .default("active"),

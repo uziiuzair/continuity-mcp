@@ -18,6 +18,10 @@ export function registerMessageTools(server: McpServer, ctx: ToolContext): void 
       inputSchema: {
         to_session: z.string().optional(),
         broadcast: z.boolean().optional(),
+        scope: z
+          .enum(["all", "repo"])
+          .optional()
+          .describe('Broadcast reach: "all" (default) or "repo" (only sessions in this repo, including its other worktrees).'),
         body: z.string(),
         requires_response: z.boolean().optional(),
         about_file: z.string().optional().describe("Repo-relative path of a contested file."),
@@ -33,6 +37,8 @@ export function registerMessageTools(server: McpServer, ctx: ToolContext): void 
         from_session: from,
         to_session: args.to_session,
         broadcast: args.broadcast,
+        scope: args.scope,
+        repo_key: ctx.repoKey,
         kind: args.about_file ? "collision" : "message",
         body: args.body,
         requires_response: args.about_file ? true : (args.requires_response ?? false),

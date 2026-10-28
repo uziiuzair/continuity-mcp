@@ -14,6 +14,7 @@ import os from "node:os"
 import {
   type AuditRecentArgs,
   type CheckinArgs,
+  type HeartbeatArgs,
   CLAIM_TTL_MS,
   type ConflictResult,
   type ContinuityBackend,
@@ -57,12 +58,14 @@ import {
 } from "@continuity/shared"
 import type { LocalDb } from "./db.js"
 
+const boolToInt = (v: boolean | undefined): number | null => (v === undefined ? null : v ? 1 : 0)
+
 const SWEEP_THROTTLE_MS = 60_000
 const LIVE = "'claimed','in_progress','pr_open'"
 
 // Column projections aliased to the camelCase shape the shared mappers consume.
 const SESSION_COLS =
-  "id, agent_label AS agentLabel, cwd_hash AS cwdHash, project_scope AS projectScope, current_focus AS currentFocus, claimed_issue_number AS claimedIssueNumber, claimed_repo_full_name AS claimedRepoFullName, status, started_at AS startedAt, last_seen_at AS lastSeenAt, ended_at AS endedAt"
+  "id, agent_label AS agentLabel, cwd_hash AS cwdHash, project_scope AS projectScope, current_focus AS currentFocus, claimed_issue_number AS claimedIssueNumber, claimed_repo_full_name AS claimedRepoFullName, worktree_path AS worktreePath, branch, is_worktree AS isWorktree, repo_key AS repoKey, status, started_at AS startedAt, last_seen_at AS lastSeenAt, ended_at AS endedAt"
 const DECISION_COLS =
   "id, decision_key AS decisionKey, content, decision_type AS decisionType, project_scope AS projectScope, author_agent_session_id AS authorAgentSessionId, status, supersedes, created_at AS createdAt"
 const CLAIM_COLS =
@@ -147,10 +150,14 @@ export class LocalBackend implements ContinuityBackend {
       )
       if (existing) {
         this.run(
-          "UPDATE agent_sessions SET agent_label=?, project_scope=?, current_focus=?, status='active', last_seen_at=?, ended_at=NULL WHERE id=?",
+          "UPDATE agent_sessions SET agent_label=?, project_scope=?, current_focus=?, worktree_path=?, branch=?, is_worktree=?, repo_key=?, status='active', last_seen_at=?, ended_at=NULL WHERE id=?",
           args.agent_label,
           args.project_scope ?? null,
           args.current_focus ?? null,
+          args.worktree_path ?? null,
+          args.branch ?? null,
+          boolToInt(args.is_worktree),
+          args.repo_key ?? null,
           now,
           existing.id,
         )
@@ -158,12 +165,16 @@ export class LocalBackend implements ContinuityBackend {
       }
       const id = randomUUID()
       const changes = this.run(
-        "INSERT INTO agent_sessions (id, agent_label, cwd_hash, project_scope, current_focus, status, started_at, last_seen_at) VALUES (?,?,?,?,?,'active',?,?) ON CONFLICT DO NOTHING",
+        "INSERT INTO agent_sessions (id, agent_label, cwd_hash, project_scope, current_focus, worktree_path, branch, is_worktree, repo_key, status, started_at, last_seen_at) VALUES (?,?,?,?,?,?,?,?,?,'active',?,?) ON CONFLICT DO NOTHING",
         id,
         args.agent_label,
         args.cwd_hash,
         args.project_scope ?? null,
         args.current_focus ?? null,
+        args.worktree_path ?? null,
+        args.branch ?? null,
+        boolToInt(args.is_worktree),
+        args.repo_key ?? null,
         now,
         now,
       )
@@ -179,21 +190,32 @@ export class LocalBackend implements ContinuityBackend {
     return result
   }
 
-  async heartbeat(args: { session_id: string; current_focus?: string }): Promise<void> {
+  async heartbeat(args: HeartbeatArgs): Promise<void> {
     this.maybeSweep()
-    const changes =
-      typeof args.current_focus === "string"
-        ? this.run(
-            "UPDATE agent_sessions SET last_seen_at=?, status='active', current_focus=? WHERE id=?",
-            nowIso(),
-            args.current_focus,
-            args.session_id,
-          )
-        : this.run(
-            "UPDATE agent_sessions SET last_seen_at=?, status='active' WHERE id=?",
-            nowIso(),
-            args.session_id,
-          )
+    // Only columns the caller passed are touched; the rest keep their value.
+    const sets = ["last_seen_at=?", "status='active'"]
+    const params: Param[] = [nowIso()]
+    if (typeof args.current_focus === "string") {
+      sets.push("current_focus=?")
+      params.push(args.current_focus)
+    }
+    if (args.worktree_path !== undefined) {
+      sets.push("worktree_path=?")
+      params.push(args.worktree_path)
+    }
+    if (args.branch !== undefined) {
+      sets.push("branch=?")
+      params.push(args.branch)
+    }
+    if (args.is_worktree !== undefined) {
+      sets.push("is_worktree=?")
+      params.push(boolToInt(args.is_worktree))
+    }
+    if (args.repo_key !== undefined) {
+      sets.push("repo_key=?")
+      params.push(args.repo_key)
+    }
+    const changes = this.run(`UPDATE agent_sessions SET ${sets.join(", ")} WHERE id=?`, ...params, args.session_id)
     if (changes === 0) throw new Error("not_found")
   }
 
@@ -218,6 +240,10 @@ export class LocalBackend implements ContinuityBackend {
     if (args.project_scope) {
       where.push("project_scope = ?")
       params.push(args.project_scope)
+    }
+    if (args.same_repo_key) {
+      where.push("repo_key = ?")
+      params.push(args.same_repo_key)
     }
     if (args.exclude_session) {
       where.push("id <> ?")
@@ -606,12 +632,16 @@ export class LocalBackend implements ContinuityBackend {
     const timeoutMin = args.expires_in_minutes ?? DEFAULT_MESSAGE_TIMEOUT_MIN
     const createdAt = new Date(now).toISOString()
     const expiresAt = new Date(now + timeoutMin * 60_000).toISOString()
+    // A repo-scoped broadcast without a key reaches no one; never widen to all.
+    const repoScoped = args.scope === "repo"
     const recipients = args.broadcast
-      ? this.all(
-          "SELECT id FROM agent_sessions WHERE status <> 'gone' AND last_seen_at >= ? AND id <> ?",
-          isoFrom(DEFAULT_LIST_ACTIVE_WINDOW_S * 1000, now),
-          args.from_session,
-        ).map((r) => r.id as string)
+      ? repoScoped && !args.repo_key
+        ? []
+        : this.all(
+            `SELECT id FROM agent_sessions WHERE status <> 'gone' AND last_seen_at >= ? AND id <> ?${repoScoped ? " AND repo_key = ?" : ""}`,
+            ...([isoFrom(DEFAULT_LIST_ACTIVE_WINDOW_S * 1000, now), args.from_session] as Param[]),
+            ...(repoScoped ? [args.repo_key as string] : []),
+          ).map((r) => r.id as string)
       : [args.to_session as string]
     const ids: string[] = []
     this.tx(() => {
