@@ -73,3 +73,18 @@ export function clearState(cwdHash: string): void {
     // ignore
   }
 }
+
+// Record the backend session id for this identity. Spread prev first: the
+// state file also carries the delta/collision caches, which a session-id
+// refresh must not wipe.
+export function persistSessionId(cwdHash: string, sessionId: string, agentLabel: string): void {
+  const prev = readState(cwdHash)
+  writeState(cwdHash, {
+    ...prev,
+    session_id: sessionId,
+    agent_label: agentLabel,
+    project_scope: prev?.project_scope ?? null,
+    pending_files: prev?.pending_files ?? [],
+    last_file_report_at: prev?.last_file_report_at ?? null,
+  })
+}

@@ -12,6 +12,7 @@ async function main() {
   const prompt = typeof input.prompt === "string" ? input.prompt.replace(/\s+/g, " ").trim() : ""
   const out = runShim(input.cwd || process.cwd(), ["--prompt-sync", prompt.slice(0, 280)], {
     timeout: 5_000,
+    sessionId: input.session_id,
   })
   if (out?.trim()) {
     process.stdout.write(

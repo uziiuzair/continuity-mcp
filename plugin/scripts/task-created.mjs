@@ -6,7 +6,7 @@ import { readStdinJson } from "./lib/stdin.mjs"
 
 async function main() {
   const input = await readStdinJson()
-  runShim(input.cwd || process.cwd(), ["--audit", "task.created"])
+  runShim(input.cwd || process.cwd(), ["--audit", "task.created"], { sessionId: input.session_id })
 }
 
 main().catch(() => process.exit(0))

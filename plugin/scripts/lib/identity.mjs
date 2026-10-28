@@ -1,23 +1,14 @@
 import { execFileSync } from "node:child_process"
 import { mkdirSync, renameSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
 import { join } from "node:path"
+
+import { dataDir } from "./state.mjs"
 
 // Writer side of the session-id rendezvous read by packages/mcp/src/identity.ts.
 // SessionStart records Claude's session_id under Claude's pid; the MCP shim,
 // which gets no hook input, finds it by walking its own parent chain.
 
 const MAX_ANCESTORS = 4
-
-// Same resolution as packages/mcp/src/state.ts dataDir(): the reader must
-// look where this writes.
-function dataDir() {
-  const own = process.env.CONTINUITY_STATE_DIR
-  if (own && own.trim()) return own
-  const fromEnv = process.env.CLAUDE_PLUGIN_DATA
-  if (fromEnv && fromEnv.trim()) return fromEnv
-  return join(homedir(), ".claude", "plugins", "data", "continuity")
-}
 
 function psParentAndComm(pid) {
   try {

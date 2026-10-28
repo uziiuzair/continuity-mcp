@@ -5,7 +5,11 @@ import { dirname, join } from "node:path"
 // Mirror of packages/mcp/src/state.ts. The state file is the rendezvous point
 // between this hook and the long-lived MCP shim.
 
-function dataDir() {
+// Same resolution as state.ts dataDir(): CONTINUITY_STATE_DIR (an embedding
+// host's own dir), then CLAUDE_PLUGIN_DATA, then the conventional path.
+export function dataDir() {
+  const own = process.env.CONTINUITY_STATE_DIR
+  if (own && own.trim()) return own
   const fromEnv = process.env.CLAUDE_PLUGIN_DATA
   if (fromEnv && fromEnv.trim()) return fromEnv
   return join(homedir(), ".claude", "plugins", "data", "continuity")

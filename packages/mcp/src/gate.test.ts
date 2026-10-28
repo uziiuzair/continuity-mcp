@@ -1,3 +1,8 @@
+import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import { normalizeRemote, parseAllowlist, resolveRepoContext } from "./gate.js"
 
@@ -92,5 +97,48 @@ describe("CONTINUITY_SESSION_ID override", () => {
   it("cwdHash stays 16 hex chars with an override", () => {
     process.env.CONTINUITY_SESSION_ID = "sess-A"
     expect(resolveRepoContext(HERE, undefined)?.cwdHash).toMatch(/^[0-9a-f]{16}$/)
+  })
+})
+
+describe("Claude session identity", () => {
+  let otherRepo: string | undefined
+
+  afterEach(() => {
+    delete process.env.CONTINUITY_SESSION_ID
+    if (otherRepo) rmSync(otherRepo, { recursive: true, force: true })
+    otherRepo = undefined
+  })
+
+  it("same toplevel, different claude ids → different cwdHash", () => {
+    const a = resolveRepoContext(HERE, undefined, { claudeSessionId: "claude-A" })?.cwdHash
+    const b = resolveRepoContext(HERE, undefined, { claudeSessionId: "claude-B" })?.cwdHash
+    expect(a).toMatch(/^[0-9a-f]{16}$/)
+    expect(b).toMatch(/^[0-9a-f]{16}$/)
+    expect(a).not.toEqual(b)
+    expect(a).toBe(createHash("sha256").update("claude:claude-A").digest("hex").slice(0, 16))
+  })
+
+  it("claude id hash is independent of dir", () => {
+    otherRepo = mkdtempSync(join(tmpdir(), "continuity-gate-claude-"))
+    execFileSync("git", ["init", "-q"], { cwd: otherRepo })
+    const here = resolveRepoContext(HERE, undefined, { claudeSessionId: "claude-same" })
+    const there = resolveRepoContext(otherRepo, undefined, { claudeSessionId: "claude-same" })
+    expect(here?.toplevel).not.toEqual(there?.toplevel)
+    expect(here?.cwdHash).toEqual(there?.cwdHash)
+  })
+
+  it("claude id wins over the CONTINUITY_SESSION_ID salt", () => {
+    const plain = resolveRepoContext(HERE, undefined, { claudeSessionId: "claude-A" })?.cwdHash
+    process.env.CONTINUITY_SESSION_ID = "sess-A"
+    expect(resolveRepoContext(HERE, undefined, { claudeSessionId: "claude-A" })?.cwdHash).toEqual(plain)
+  })
+
+  it("no claude id → legacy hash", () => {
+    delete process.env.CONTINUITY_SESSION_ID
+    const ctx = resolveRepoContext(HERE, undefined)
+    const legacy = createHash("sha256").update(ctx?.toplevel ?? "").digest("hex").slice(0, 16)
+    expect(ctx?.cwdHash).toBe(legacy)
+    expect(resolveRepoContext(HERE, undefined, { claudeSessionId: null })?.cwdHash).toBe(legacy)
+    expect(resolveRepoContext(HERE, undefined, { claudeSessionId: "" })?.cwdHash).toBe(legacy)
   })
 })

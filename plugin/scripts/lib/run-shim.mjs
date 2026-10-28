@@ -14,7 +14,10 @@ export function nodeSupported() {
 // Returns the child's stdout, or null on any failure (hooks always fail open).
 // The default timeout stays under the tightest synchronous hook budget
 // (UserPromptSubmit: 10s) so the shim never outlives the hook that ran it.
-export function runShim(cwd, args, { timeout = 8_000 } = {}) {
+// `sessionId` is the hook input's session_id: it reaches the child as
+// CONTINUITY_CLAUDE_SESSION_ID, so the shim derives the same per-session
+// identity (cwdHash) as the hook.
+export function runShim(cwd, args, { timeout = 8_000, sessionId } = {}) {
   const root = process.env.CLAUDE_PLUGIN_ROOT
   if (!root) return null
   if (!nodeSupported()) return null
@@ -41,6 +44,7 @@ export function runShim(cwd, args, { timeout = 8_000 } = {}) {
   }
   const dbPath = opt("CONTINUITY_DB_PATH", "CLAUDE_PLUGIN_OPTION_DBPATH", "CLAUDE_PLUGIN_OPTION_DB_PATH")
   if (dbPath) env.CONTINUITY_DB_PATH = dbPath
+  if (typeof sessionId === "string" && sessionId) env.CONTINUITY_CLAUDE_SESSION_ID = sessionId
   // Silence the node:sqlite ExperimentalWarning on Node 22.x–23.x.
   env.NODE_NO_WARNINGS = "1"
 

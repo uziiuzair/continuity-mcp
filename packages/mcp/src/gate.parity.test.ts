@@ -54,6 +54,35 @@ describe("parity: resolveRepoContext", () => {
     expect(mj).toEqual(ts)
   })
 
+  it("agrees on cwdHash with a Claude session id", () => {
+    repoDir = makeScratchRepo()
+    const ts = resolveRepoContext(repoDir, undefined, { claudeSessionId: "claude-parity" })
+    const mj = mirror.resolveRepoContext(repoDir, undefined, { claudeSessionId: "claude-parity" })
+    expect(ts?.cwdHash).toMatch(/^[0-9a-f]{16}$/)
+    expect(mj).toEqual(ts)
+  })
+
+  it("agrees when a Claude session id and CONTINUITY_SESSION_ID are both set", () => {
+    repoDir = makeScratchRepo()
+    process.env.CONTINUITY_SESSION_ID = "sess-parity-check"
+    const ts = resolveRepoContext(repoDir, undefined, { claudeSessionId: "claude-parity" })
+    const mj = mirror.resolveRepoContext(repoDir, undefined, { claudeSessionId: "claude-parity" })
+    expect(mj).toEqual(ts)
+    // The Claude id is the whole identity: the salt no longer applies.
+    delete process.env.CONTINUITY_SESSION_ID
+    expect(resolveRepoContext(repoDir, undefined, { claudeSessionId: "claude-parity" })).toEqual(ts)
+  })
+
+  it("agrees on the legacy hash for a null or empty Claude session id", () => {
+    repoDir = makeScratchRepo()
+    for (const claudeSessionId of [null, ""]) {
+      const ts = resolveRepoContext(repoDir, undefined, { claudeSessionId })
+      const mj = mirror.resolveRepoContext(repoDir, undefined, { claudeSessionId })
+      expect(ts).toEqual(resolveRepoContext(repoDir, undefined))
+      expect(mj).toEqual(ts)
+    }
+  })
+
   it("both return null for a non-git directory", () => {
     repoDir = mkdtempSync(join(tmpdir(), "continuity-gate-parity-nongit-"))
     expect(resolveRepoContext(repoDir, undefined)).toBeNull()

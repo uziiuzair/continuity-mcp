@@ -62,8 +62,26 @@ export function parseAllowlist(raw: string | undefined): string[] {
     .filter(Boolean)
 }
 
+// Identity hash. With a Claude Code session id, the identity is that session
+// alone: stable across `cd` and worktree moves, distinct for two sessions in
+// one checkout. Without one (standalone shim, tests), the legacy per-toplevel
+// hash, salted by CONTINUITY_SESSION_ID when set.
+function identityHash(toplevel: string, claudeSessionId: string | null | undefined): string {
+  const sessionSalt = process.env.CONTINUITY_SESSION_ID
+  const hashInput = claudeSessionId
+    ? `claude:${claudeSessionId}`
+    : sessionSalt
+      ? `${toplevel} ${sessionSalt}`
+      : toplevel
+  return createHash("sha256").update(hashInput).digest("hex").slice(0, 16)
+}
+
 // Returns the repo context if the shim should activate here, else null (inert).
-export function resolveRepoContext(dir: string, allowlistRaw: string | undefined): RepoContext | null {
+export function resolveRepoContext(
+  dir: string,
+  allowlistRaw: string | undefined,
+  opts: { claudeSessionId?: string | null } = {},
+): RepoContext | null {
   const toplevel = gitToplevel(dir)
   if (!toplevel) return null
 
@@ -80,13 +98,9 @@ export function resolveRepoContext(dir: string, allowlistRaw: string | undefined
   const slash = normalized ? normalized.indexOf("/") : -1
   const repoFullName = normalized && slash >= 0 ? normalized.slice(slash + 1) : null
 
-  const sessionSalt = process.env.CONTINUITY_SESSION_ID
-  const hashInput = sessionSalt ? `${toplevel} ${sessionSalt}` : toplevel
-  const cwdHash = createHash("sha256").update(hashInput).digest("hex").slice(0, 16)
-
   return {
     toplevel,
     repoFullName,
-    cwdHash,
+    cwdHash: identityHash(toplevel, opts.claudeSessionId),
   }
 }

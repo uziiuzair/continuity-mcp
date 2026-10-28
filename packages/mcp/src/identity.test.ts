@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { SESSION_ID_ENV, resolveClaudeSessionId } from "./identity.js"
+import { HOOK_SESSION_ID_ENV, SESSION_ID_ENV, resolveClaudeSessionId } from "./identity.js"
 
 // The rendezvous writer is the SessionStart hook's plain-ESM module (no types);
 // a computed specifier keeps tsc out of resolving it.
@@ -12,7 +12,7 @@ const { writeRendezvous } = (await import(writerUrl)) as {
 }
 
 let stateDir: string
-let savedEnv: { state?: string; session?: string }
+let savedEnv: { state?: string; session?: string; hook?: string }
 
 function writeByPid(pid: number, body: unknown): void {
   const dir = join(stateDir, "sessions", "by-pid")
@@ -22,16 +22,22 @@ function writeByPid(pid: number, body: unknown): void {
 
 beforeEach(() => {
   stateDir = mkdtempSync(join(tmpdir(), "continuity-identity-"))
-  savedEnv = { state: process.env.CONTINUITY_STATE_DIR, session: process.env[SESSION_ID_ENV] }
+  savedEnv = {
+    state: process.env.CONTINUITY_STATE_DIR,
+    session: process.env[SESSION_ID_ENV],
+    hook: process.env[HOOK_SESSION_ID_ENV],
+  }
   process.env.CONTINUITY_STATE_DIR = stateDir
   // The suite may itself run inside a Claude Code session that exports the var.
   delete process.env[SESSION_ID_ENV]
+  delete process.env[HOOK_SESSION_ID_ENV]
 })
 
 afterEach(() => {
   for (const [key, value] of [
     ["CONTINUITY_STATE_DIR", savedEnv.state],
     [SESSION_ID_ENV, savedEnv.session],
+    [HOOK_SESSION_ID_ENV, savedEnv.hook],
   ] as const) {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
@@ -69,5 +75,30 @@ describe("resolveClaudeSessionId", () => {
   it("reads what the SessionStart hook's writeRendezvous wrote", async () => {
     writeRendezvous(process.ppid, "hook-written-id")
     expect(await resolveClaudeSessionId({ retries: 0 })).toBe("hook-written-id")
+  })
+
+  it("the hook-provided id wins over everything", async () => {
+    process.env[HOOK_SESSION_ID_ENV] = "hook-input-id"
+    process.env[SESSION_ID_ENV] = "env-session-id"
+    writeByPid(process.ppid, { session_id: "rendezvous-id", written_at: Date.now() })
+    expect(await resolveClaudeSessionId({ retries: 0 })).toBe("hook-input-id")
+    expect(await resolveClaudeSessionId({ retries: 0, preferRendezvous: true })).toBe("hook-input-id")
+  })
+
+  // After /clear, SessionStart rewrites the rendezvous with the new id while
+  // the long-lived server's env still carries the old one.
+  it("preferRendezvous: rendezvous id newer than env wins", async () => {
+    process.env[SESSION_ID_ENV] = "env-before-clear"
+    writeByPid(process.ppid, { session_id: "after-clear", written_at: Date.now() })
+    expect(await resolveClaudeSessionId({ retries: 0, preferRendezvous: true })).toBe("after-clear")
+    // Default mode keeps the env-first order.
+    expect(await resolveClaudeSessionId({ retries: 0 })).toBe("env-before-clear")
+  })
+
+  it("preferRendezvous: falls back to env without a fresh rendezvous", async () => {
+    process.env[SESSION_ID_ENV] = "env-session-id"
+    expect(await resolveClaudeSessionId({ retries: 0, preferRendezvous: true })).toBe("env-session-id")
+    writeByPid(process.ppid, { session_id: "stale-id", written_at: 0 })
+    expect(await resolveClaudeSessionId({ retries: 0, preferRendezvous: true })).toBe("env-session-id")
   })
 })

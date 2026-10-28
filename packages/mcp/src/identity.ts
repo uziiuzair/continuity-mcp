@@ -26,6 +26,10 @@ import { dataDir } from "./state.js"
 // it from its own ancestor chain.
 export const SESSION_ID_ENV = "CLAUDE_CODE_SESSION_ID"
 
+// Set by the hooks' runShim from their input's session_id for one-shot shim
+// runs. It wins over everything: the hook input is authoritative.
+export const HOOK_SESSION_ID_ENV = "CONTINUITY_CLAUDE_SESSION_ID"
+
 // Ancestors examined, nearest first: enough to reach Claude through the
 // launch.mjs re-exec and a hook-launched shim run.
 const MAX_ANCESTORS = 4
@@ -54,8 +58,13 @@ function describePid(pid: number): { ppid: number; startedAt: number | null; com
 }
 
 // Walk process.ppid upward, stopping after the first `claude` process so a
-// nested session never picks up its outer Claude's rendezvous.
+// nested session never picks up its outer Claude's rendezvous. Memoized once
+// found: the long-lived server re-reads the rendezvous on every tool call and
+// must not spawn `ps` each time.
+let memoChain: Ancestor[] | null = null
+
 function ancestorChain(): Ancestor[] {
+  if (memoChain) return memoChain
   const chain: Ancestor[] = []
   let pid = process.ppid
   while (chain.length < MAX_ANCESTORS && pid > 1) {
@@ -66,6 +75,7 @@ function ancestorChain(): Ancestor[] {
     if (isClaude) break
     pid = info.ppid
   }
+  if (chain.length > 0) memoChain = chain
   return chain
 }
 
@@ -85,22 +95,38 @@ function readRendezvous(ancestor: Ancestor): string | null {
   }
 }
 
-// Resolve Claude's session id: the env var, else the rendezvous (retried,
-// since SessionStart and the MCP launch race), else null.
+function readChain(chain: Ancestor[]): string | null {
+  for (const ancestor of chain) {
+    const id = readRendezvous(ancestor)
+    if (id) return id
+  }
+  return null
+}
+
+// Resolve Claude's session id: the hook-provided env var, then
+// CLAUDE_CODE_SESSION_ID, else the rendezvous (retried, since SessionStart and
+// the MCP launch race), else null.
+//
+// `preferRendezvous` is for the long-lived server: after `/clear` Claude Code
+// starts a new session (SessionStart rewrites the rendezvous) but the server's
+// env still carries the old CLAUDE_CODE_SESSION_ID, so a fresh rendezvous
+// (written after the Claude process started) is checked before the env var.
 export async function resolveClaudeSessionId(
-  opts: { retries?: number; delayMs?: number } = {},
+  opts: { retries?: number; delayMs?: number; preferRendezvous?: boolean } = {},
 ): Promise<string | null> {
-  const { retries = 5, delayMs = 200 } = opts
+  const { retries = 5, delayMs = 200, preferRendezvous = false } = opts
+  const fromHook = process.env[HOOK_SESSION_ID_ENV]?.trim()
+  if (fromHook) return fromHook
+
   const fromEnv = process.env[SESSION_ID_ENV]?.trim()
-  if (fromEnv) return fromEnv
+  if (fromEnv && !preferRendezvous) return fromEnv
 
   const chain = ancestorChain()
+  if (fromEnv) return readChain(chain) ?? fromEnv
   if (chain.length === 0) return null
   for (let attempt = 0; ; attempt++) {
-    for (const ancestor of chain) {
-      const id = readRendezvous(ancestor)
-      if (id) return id
-    }
+    const id = readChain(chain)
+    if (id) return id
     if (attempt >= retries) return null
     await new Promise((resolve) => setTimeout(resolve, delayMs))
   }

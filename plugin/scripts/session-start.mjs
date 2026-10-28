@@ -35,7 +35,7 @@ async function main() {
     )
     return
   }
-  const out = runShim(cwd, ["--snapshot"], { timeout: 12_000 })
+  const out = runShim(cwd, ["--snapshot"], { timeout: 12_000, sessionId: input.session_id })
   const parts = [out?.trim(), duplicateInstallWarningFromDisk(cwd)].filter(Boolean)
   if (parts.length > 0) {
     process.stdout.write(

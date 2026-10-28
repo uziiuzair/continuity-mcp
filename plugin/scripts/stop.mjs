@@ -10,7 +10,9 @@ import { readStdinJson } from "./lib/stdin.mjs"
 
 async function main() {
   const input = await readStdinJson()
-  const repo = resolveRepoContext(input.cwd || process.cwd(), repoAllowlistFromEnv())
+  const repo = resolveRepoContext(input.cwd || process.cwd(), repoAllowlistFromEnv(), {
+    claudeSessionId: input.session_id,
+  })
   if (!repo) return
   const state = readState(repo.cwdHash)
   const decision = stopGateDecision({

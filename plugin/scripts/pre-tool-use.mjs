@@ -40,7 +40,7 @@ async function main() {
   if (!ALLOWED.has(input.tool_name) || !input.tool_input?.file_path) return
 
   const mode = parseGuardMode(collisionGuardFromEnv())
-  const repo = resolveRepoContext(cwd, repoAllowlistFromEnv())
+  const repo = resolveRepoContext(cwd, repoAllowlistFromEnv(), { claudeSessionId: input.session_id })
   if (!repo) return
 
   const rel = repoRelative(repo.toplevel, input.tool_input.file_path)
