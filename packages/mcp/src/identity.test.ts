@@ -65,10 +65,17 @@ describe("resolveClaudeSessionId", () => {
 
   it("no claude ancestor → no polling (non-Claude hosts start fast)", async () => {
     setAncestorChainForTest([{ pid: process.ppid, startedAt: 0, isClaude: false }])
-    setTimeout(() => writeByPid(process.ppid, { session_id: "late-id", written_at: Date.now() }), 50)
+    const late = new Promise<void>((resolve) =>
+      setTimeout(() => {
+        writeByPid(process.ppid, { session_id: "late-id", written_at: Date.now() })
+        resolve()
+      }, 50),
+    )
     const t0 = Date.now()
     expect(await resolveClaudeSessionId({ retries: 5, delayMs: 100 })).toBeNull()
     expect(Date.now() - t0).toBeLessThan(50)
+    // Let the late write land in this test's state dir, not the next test's.
+    await late
   })
 
   it("no claude ancestor still reads a rendezvous already present", async () => {
