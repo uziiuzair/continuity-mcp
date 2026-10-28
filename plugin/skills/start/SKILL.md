@@ -1,6 +1,6 @@
 ---
 name: start
-description: Start the Continuity Loop now: announce your task, worktree and path to sibling sessions in this repo, and check Continuity on a self-backing-off schedule.
+description: "Start the Continuity Loop now: announce your task, worktree and path to sibling sessions in this repo, and check Continuity on a self-backing-off schedule."
 argument-hint: "[task description]"
 ---
 

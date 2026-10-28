@@ -90,7 +90,7 @@ off while quiet and stops by itself:
 response to a message you sent, or a new handoff for you. An active tick resets
 to tier 1. Decisions, file activity and sessions joining or leaving are reported
 but never count. When the agent finishes its own work it says so once and drops a
-tier, and stays responsive.
+tier, and stays responsive; after that, an active tick resets to the start of the current tier, not tier 1.
 
 Cron jobs are session-only and expire after 7 days. Known limit: the team-mode
 Worker has no message routes yet, so announcements and message tools fail there

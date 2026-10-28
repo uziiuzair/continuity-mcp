@@ -19,16 +19,17 @@ while you are idle, may fire late, and recurring jobs expire after 7 days.
 
 ## Start
 
-If a loop is already running for you (`loop_tick` reports `loop.cron_job_id`), do
-nothing but report its state.
-
 1. Call `loop_tick({ start: true, task })` with a one-line description of your task.
-   It returns `session.worktree` and a `reschedule` verdict with the first cron
-   (`*/5 * * * *`).
+   Starting is idempotent. If it errors or returns `ok: false`, tell the user in one
+   line and don't create a cron job. If a loop already exists it returns `keep` and
+   the current `loop.cron_job_id`: report that state and do NOT create another cron.
+   Otherwise it returns `session.worktree` and a `reschedule` verdict with the first
+   cron (`*/5 * * * *`).
 2. Announce yourself: `message_send({ broadcast: true, scope: "repo", body })`, no
-   `requires_response`. The body names your task, your worktree/branch and its
-   path (from `session.worktree`). If `message_send` fails (team mode has no
-   message routes yet), carry on without announcements.
+   `requires_response`. The body names your task and the branch and path from
+   `session.worktree` (if `is_worktree` is false, that is the plain checkout's
+   `branch` and `path`). If `message_send` fails (team mode has no message routes
+   yet), carry on without announcements.
 3. Call `agent_report_focus({ current_focus: task })`.
 4. `CronCreate({ cron: verdict.cron, prompt: "[continuity-loop] Continuity Loop tick: call loop_tick and follow the continuity:loop skill.", recurring: true })`.
 5. Call `loop_tick({ cron_job_id: <the new job id> })`.
@@ -36,7 +37,7 @@ nothing but report its state.
 ## Each tick
 
 1. Call `loop_tick()`.
-   - `{ ok: false, reason: "no_loop" }`: `CronDelete` this job and stop.
+   - `{ ok: false, reason: "no_loop" }`: call `CronList`, then `CronDelete` every job whose prompt has the `[continuity-loop]` marker (this includes the one that fired this tick), and stop.
    - `{ ok: false, reason: "no_active_session" }`: Continuity has no session yet; skip this tick.
    - The call itself errors (backend unreachable): keep the schedule, try next tick.
 2. Answer every item in `new.messages`: `message_respond(id, response)` or
@@ -46,7 +47,7 @@ nothing but report its state.
    prompt are the same items, so don't report them twice.
 4. Apply `verdict`:
    - `keep`: do nothing.
-   - `reschedule`: `CronDelete` the old id, `CronCreate({ cron: verdict.cron, prompt: <same tick prompt> })`,
+   - `reschedule`: `CronDelete` the old id, `CronCreate({ cron: verdict.cron, prompt: "[continuity-loop] Continuity Loop tick: call loop_tick and follow the continuity:loop skill.", recurring: true })`,
      then `loop_tick({ cron_job_id: <new id> })`.
    - `stop`: `CronDelete` the id and tell the user in one line that the loop ended
      and why (`verdict.reason`).
@@ -69,8 +70,11 @@ An active tick resets to tier 1.
 
 ## When your own work is done
 
-Call `loop_tick({ own_work_done: true })` once, then send one repo-scoped note with
+Call `loop_tick({ own_work_done: true })` once. It is a real tick: handle `new` and
+apply the returned `verdict` exactly as in a normal tick (answer messages, handle
+handoffs, report, then keep/reschedule/stop; it usually reschedules because it drops
+a tier). Then send one repo-scoped note with
 `message_send({ broadcast: true, scope: "repo", body })` saying your work is done
-and you are still answering messages. `loop_tick` never sends messages itself.
-Afterwards the loop drops one tier, and an active tick resets to the start of
-the current tier instead of tier 1.
+and you are still answering messages; if that fails in team mode, carry on.
+`loop_tick` never sends messages itself. Afterwards an active tick resets to the
+start of the current tier instead of tier 1.
