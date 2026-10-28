@@ -189,10 +189,18 @@ export function computeTick(
 
 // Backend reads for one tick. Errors propagate: a partial fetch would prune
 // `seen` and re-report old items, so a failed tick is better left unconsumed.
-export async function fetchLoopTickData(ctx: ToolContext, sessionId: string): Promise<LoopTickData> {
+// Responses are read since the previous tick (not the backend's 30-minute
+// default), since slow tiers tick 30+ minutes apart. Inbound needs no window:
+// pending messages stay pending until answered, so they cannot age out.
+export async function fetchLoopTickData(
+  ctx: ToolContext,
+  sessionId: string,
+  prev: LoopState | null,
+): Promise<LoopTickData> {
+  const resolvedSince = prev ? { resolved_since: new Date(prev.last_tick_at).toISOString() } : {}
   const [active, pending, handoffs, decisions] = await Promise.all([
     ctx.backend.listActive({ same_repo_key: ctx.repoKey, exclude_session: sessionId, max_age_seconds: 300 }),
-    ctx.backend.messagePending({ session_id: sessionId }),
+    ctx.backend.messagePending({ session_id: sessionId, ...resolvedSince }),
     ctx.backend.handoffPending({ agent_session_id: sessionId }),
     ctx.backend.decisionRecent({ limit: 10 }),
   ])
@@ -236,8 +244,11 @@ export function registerLoopTools(server: McpServer, ctx: ToolContext): void {
       const state = readState(cwdHash)
       const prev = state?.loop ?? null
       const kind = tickKind(prev, input)
-      const data = kind === "start" || kind === "tick" ? await fetchLoopTickData(ctx, sessionId) : emptyData()
-      const { loop, result } = computeTick(prev, data, input, Date.now())
+      // Taken before the fetch, so a reply landing mid-fetch is still newer
+      // than last_tick_at and gets picked up by the next tick.
+      const now = Date.now()
+      const data = kind === "start" || kind === "tick" ? await fetchLoopTickData(ctx, sessionId, prev) : emptyData()
+      const { loop, result } = computeTick(prev, data, input, now)
 
       if (kind !== "no_loop") {
         const latest: SessionState = readState(cwdHash) ?? {

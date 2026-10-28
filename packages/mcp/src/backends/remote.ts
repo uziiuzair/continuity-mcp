@@ -202,7 +202,11 @@ export class RemoteBackend implements ContinuityBackend, TeamBackend {
     return this.get("/messages/list", args)
   }
 
-  messagePending(args: { session_id: string }): Promise<{ inbound: Message[]; resolved: Message[] }> {
+  // resolved_since rides along as a query param.
+  messagePending(args: {
+    session_id: string
+    resolved_since?: string
+  }): Promise<{ inbound: Message[]; resolved: Message[] }> {
     return this.get("/messages/pending", args)
   }
 

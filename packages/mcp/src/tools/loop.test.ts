@@ -1,7 +1,12 @@
-import type { ActiveSession, Decision, Handoff, Message } from "@continuity/shared"
-import { describe, expect, it } from "vitest"
-import type { LoopState } from "../state.js"
-import { type LoopTickData, computeTick } from "./loop.js"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import type { ActiveSession, ContinuityBackend, Decision, Handoff, Message } from "@continuity/shared"
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { type LoopState, type SessionState, readState, writeState } from "../state.js"
+import { type LoopTickData, computeTick, registerLoopTools } from "./loop.js"
+import type { ToolContext } from "./util.js"
 
 const msg = (id: string): Message => ({
   id,
@@ -181,5 +186,129 @@ describe("computeTick", () => {
     const loop = started({ ...empty(), inbound: [msg("m1"), msg("m2")] })
     const r = computeTick(loop, { ...empty(), inbound: [msg("m2")] }, {}, NOW + 1)
     expect(r.loop?.seen.messages).toEqual(["m2"])
+  })
+})
+
+// ---- Handler: state file + backend wiring ----
+
+type Call = { method: string; args: unknown }
+type Handler = (input: Record<string, unknown>) => Promise<{ content: { text: string }[] }>
+
+const HASH = "loophash"
+let dir: string
+let savedStateDir: string | undefined
+let calls: Call[]
+let backendData: LoopTickData
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), "continuity-loop-"))
+  savedStateDir = process.env.CONTINUITY_STATE_DIR
+  process.env.CONTINUITY_STATE_DIR = dir
+  calls = []
+  backendData = empty()
+})
+
+afterEach(() => {
+  if (savedStateDir === undefined) delete process.env.CONTINUITY_STATE_DIR
+  else process.env.CONTINUITY_STATE_DIR = savedStateDir
+  rmSync(dir, { recursive: true, force: true })
+})
+
+function tool(sessionId: string | null = "me"): (input?: Record<string, unknown>) => Promise<Record<string, unknown>> {
+  const record =
+    <T>(method: string, out: () => T) =>
+    async (args: unknown) => {
+      calls.push({ method, args })
+      return out()
+    }
+  const backend = {
+    listActive: record("listActive", () => ({ sessions: backendData.sameRepoActive })),
+    messagePending: record("messagePending", () => ({ inbound: backendData.inbound, resolved: backendData.resolved })),
+    handoffPending: record("handoffPending", () => ({ handoffs: backendData.handoffs })),
+    decisionRecent: record("decisionRecent", () => ({ decisions: backendData.decisions })),
+  } as unknown as ContinuityBackend
+  const ctx: ToolContext = {
+    backend,
+    getSessionId: () => sessionId,
+    repoFullName: "o/r",
+    mode: "local",
+    cwdHash: HASH,
+    repoKey: "github.com/o/r",
+    worktree: { is_worktree: false, path: "/repo", branch: "main", main_checkout: null, claude_managed: false },
+  }
+  let handler: Handler | undefined
+  const server = {
+    registerTool: (_name: string, _cfg: unknown, h: Handler) => {
+      handler = h
+    },
+  } as unknown as McpServer
+  registerLoopTools(server, ctx)
+  return async (input = {}) => JSON.parse((await (handler as Handler)(input)).content[0]!.text)
+}
+
+const baseState = (extra: Partial<SessionState> = {}): SessionState => ({
+  session_id: "me",
+  agent_label: "my-label",
+  project_scope: null,
+  pending_files: [{ path: "a.ts", tool: "Edit" }],
+  last_file_report_at: 42,
+  message_warned: ["w1"],
+  ...extra,
+})
+
+describe("loop_tick handler", () => {
+  it("no session id → no_active_session, no fetch", async () => {
+    expect(await tool(null)({ start: true })).toEqual({ ok: false, reason: "no_active_session" })
+    expect(calls).toEqual([])
+  })
+
+  it("start writes loop and preserves other state fields", async () => {
+    writeState(HASH, baseState())
+    const out = await tool()({ start: true, task: "build" })
+    expect(out).toMatchObject({
+      ok: true,
+      session: { id: "me", label: "my-label", worktree: { is_worktree: false, path: "/repo", branch: "main", main_checkout: null } },
+      verdict: { action: "reschedule", interval_minutes: 5 },
+    })
+    const st = readState(HASH)
+    expect(st).toMatchObject({ pending_files: [{ path: "a.ts", tool: "Edit" }], last_file_report_at: 42, message_warned: ["w1"] })
+    expect(st?.loop).toMatchObject({ task: "build", tier: 1 })
+    // Start keeps the backend's default resolved window.
+    const pending = calls.find((c) => c.method === "messagePending")
+    expect(pending?.args).toEqual({ session_id: "me" })
+  })
+
+  it("cron-id-only and already-running start do not fetch", async () => {
+    writeState(HASH, baseState({ loop: started() }))
+    await tool()({ cron_job_id: "job-1" })
+    await tool()({ start: true })
+    expect(calls).toEqual([])
+    expect(readState(HASH)?.loop?.cron_job_id).toBe("job-1")
+  })
+
+  it("a tick passes resolved_since = last_tick_at", async () => {
+    const last = Date.UTC(2026, 9, 28, 12, 0, 0)
+    writeState(HASH, baseState({ loop: { ...started(), last_tick_at: last } }))
+    backendData = { ...empty(), resolved: [msg("r1")] }
+    const out = await tool()({})
+    expect(out).toMatchObject({ ok: true, active: true })
+    const pending = calls.find((c) => c.method === "messagePending")
+    expect(pending?.args).toEqual({ session_id: "me", resolved_since: new Date(last).toISOString() })
+  })
+
+  it("stop writes loop: null to disk, other fields kept", async () => {
+    writeState(HASH, baseState({ loop: { ...started(), tier: 3, quiet_streak: 1, own_work_done: true } }))
+    const out = await tool()({})
+    expect(out).toMatchObject({ ok: true, verdict: { action: "stop" } })
+    const st = readState(HASH)
+    expect(st?.loop).toBeNull()
+    expect(st?.message_warned).toEqual(["w1"])
+  })
+
+  it("no loop → no_loop, nothing written", async () => {
+    writeState(HASH, baseState())
+    expect(await tool()({})).toEqual({ ok: false, reason: "no_loop", hint: "CronDelete this job" })
+    expect(calls).toEqual([])
+    expect(readState(HASH)).toEqual(baseState())
   })
 })

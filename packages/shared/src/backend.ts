@@ -176,7 +176,9 @@ export interface ContinuityBackend {
   messageList(args: MessageListArgs): Promise<{ messages: Message[] }>
   // Everything prompt-sync needs in one call: pending unexpired inbound for me,
   // plus my outbound rows resolved (responded/dismissed) in the last 30 minutes.
-  messagePending(args: { session_id: string }): Promise<{ inbound: Message[]; resolved: Message[] }>
+  // `resolved_since` (ISO) replaces that window, newest first, so a caller that
+  // polls less often than every 30 minutes (loop_tick) never misses a reply.
+  messagePending(args: { session_id: string; resolved_since?: string }): Promise<{ inbound: Message[]; resolved: Message[] }>
 
   // ---- Audit ----
   auditRecent(args: AuditRecentArgs): Promise<{ events: AuditEvent[] }>

@@ -292,6 +292,30 @@ describe("messages", () => {
     expect(resolved2.some((m) => m.id === ids2[0] && m.status === "dismissed")).toBe(true)
   })
 
+  it("resolved_since returns a response older than 30 min but newer than since", async () => {
+    const a = await backend.checkin({ agent_label: "a4s", cwd_hash: "msg-cwd-a4s" })
+    const b = await backend.checkin({ agent_label: "b4s", cwd_hash: "msg-cwd-b4s" })
+    const send = async (body: string) =>
+      (await backend.messageSend({ from_session: a.session_id, to_session: b.session_id, kind: "message", body }))
+        .message_ids[0]!
+    const old = await send("old")
+    const older = await send("older")
+    await backend.messageRespond({ message_id: old, response: "late reply" })
+    await backend.messageRespond({ message_id: older, response: "earlier reply" })
+    const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString()
+    db.prepare("UPDATE messages SET responded_at = ? WHERE id = ?").run(ago(45), old)
+    db.prepare("UPDATE messages SET responded_at = ? WHERE id = ?").run(ago(50), older)
+
+    // Default 30-minute window misses both.
+    expect((await backend.messagePending({ session_id: a.session_id })).resolved).toHaveLength(0)
+    // since 60 min ago: both, newest first.
+    const wide = await backend.messagePending({ session_id: a.session_id, resolved_since: ago(60) })
+    expect(wide.resolved.map((m) => m.id)).toEqual([old, older])
+    // since 48 min ago: only the newer one.
+    const narrow = await backend.messagePending({ session_id: a.session_id, resolved_since: ago(48) })
+    expect(narrow.resolved.map((m) => m.id)).toEqual([old])
+  })
+
   it("expired messages drop out of pending inbound", async () => {
     const a = await backend.checkin({ agent_label: "a5", cwd_hash: "msg-cwd-a5" })
     const b = await backend.checkin({ agent_label: "b5", cwd_hash: "msg-cwd-b5" })

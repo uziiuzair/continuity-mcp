@@ -700,7 +700,10 @@ export class LocalBackend implements ContinuityBackend {
     return { messages: rows.map((r) => toMessage(this.withFromUserName(r) as never)) }
   }
 
-  async messagePending(args: { session_id: string }): Promise<{ inbound: Message[]; resolved: Message[] }> {
+  async messagePending(args: {
+    session_id: string
+    resolved_since?: string
+  }): Promise<{ inbound: Message[]; resolved: Message[] }> {
     const now = nowIso()
     const inbound = this.all(
       `SELECT ${MESSAGE_COLS} ${MESSAGE_JOIN}
@@ -709,12 +712,16 @@ export class LocalBackend implements ContinuityBackend {
       args.session_id,
       now,
     )
+    // Default: the last 30 minutes, oldest first. With resolved_since: that
+    // window instead, newest first and a larger cap.
+    const since = args.resolved_since
     const resolved = this.all(
       `SELECT ${MESSAGE_COLS} ${MESSAGE_JOIN}
        WHERE m.from_agent_session_id = ? AND m.status <> 'pending' AND m.responded_at > ?
-       ORDER BY m.responded_at ASC LIMIT 20`,
+       ORDER BY m.responded_at ${since ? "DESC" : "ASC"} LIMIT ?`,
       args.session_id,
-      isoFrom(30 * 60_000),
+      since ?? isoFrom(30 * 60_000),
+      since ? 100 : 20,
     )
     return {
       inbound: inbound.map((r) => toMessage(this.withFromUserName(r) as never)),
