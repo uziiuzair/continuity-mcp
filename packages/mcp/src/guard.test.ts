@@ -519,6 +519,18 @@ describe("loopCronDecision", () => {
   it("single matching cron is fine", () => {
     expect(loopCronDecision({ loop: loop("a"), sessionCrons: [marked("a")], stopHookActive: false })).toEqual({ block: false })
   })
+  it("recorded cron id not among marked crons -> keep the first, ask to record it and delete the rest", () => {
+    expect(loopCronDecision({ loop: loop("gone"), sessionCrons: [other, marked("a"), marked("b"), marked("c")], stopHookActive: false })).toEqual({
+      block: true,
+      reason: 'Continuity Loop cron id not recorded; call loop_tick({ cron_job_id: "a" }) and CronDelete b, c.',
+    })
+  })
+  it("recorded cron id not among a single marked cron -> ask to record it, no CronDelete", () => {
+    expect(loopCronDecision({ loop: loop("gone"), sessionCrons: [marked("a")], stopHookActive: false })).toEqual({
+      block: true,
+      reason: 'Continuity Loop cron id not recorded; call loop_tick({ cron_job_id: "a" }).',
+    })
+  })
   it("stopHookActive or undefined crons never block", () => {
     expect(loopCronDecision({ loop: null, sessionCrons: [marked("a")], stopHookActive: true }).block).toBe(false)
     expect(loopCronDecision({ loop: null, sessionCrons: undefined, stopHookActive: false }).block).toBe(false)

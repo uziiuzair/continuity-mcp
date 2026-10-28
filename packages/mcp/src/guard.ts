@@ -323,8 +323,9 @@ export function stopGateDecision(args: {
 // Stop guard for Continuity Loop crons. A cron is "marked" when its prompt
 // carries LOOP_CRON_MARKER. Loop ended but crons linger -> delete them; loop
 // live with its cron gone (expired/lost) -> clear the loop; duplicates -> keep
-// only loop.cron_job_id. A loop whose cron_job_id is still null is mid-start
-// (CronCreate unconfirmed): never clear or block it.
+// only loop.cron_job_id; a recorded id that matches no marked cron -> keep the
+// first marked cron and record its id. A loop whose cron_job_id is still null
+// is mid-start (CronCreate unconfirmed): never clear it.
 export function loopCronDecision(args: {
   loop: LoopState | null | undefined
   sessionCrons: { id: string; prompt: string }[] | undefined
@@ -338,7 +339,17 @@ export function loopCronDecision(args: {
     return { block: true, reason: `Continuity Loop has ended; CronDelete ${ids(marked)}.` }
   }
   if (marked.length === 0) return args.loop.cron_job_id ? { block: false, clearLoop: true } : { block: false }
-  const keep = args.loop.cron_job_id ?? marked[0]?.id
+  const recorded = args.loop.cron_job_id
+  if (recorded && !marked.some((c) => c.id === recorded)) {
+    // The recorded id is stale: keep the first live marked cron and record it.
+    const [first, ...others] = marked
+    const del = others.length > 0 ? ` and CronDelete ${ids(others)}` : ""
+    return {
+      block: true,
+      reason: `Continuity Loop cron id not recorded; call loop_tick({ cron_job_id: "${first?.id}" })${del}.`,
+    }
+  }
+  const keep = recorded ?? marked[0]?.id
   const extra = marked.filter((c) => c.id !== keep)
   if (extra.length === 0) return { block: false }
   return { block: true, reason: `Continuity Loop has extra crons; CronDelete ${ids(extra)}.` }

@@ -168,7 +168,17 @@ export function loopCronDecision(args) {
     return { block: true, reason: `Continuity Loop has ended; CronDelete ${ids(marked)}.` }
   }
   if (marked.length === 0) return args.loop.cron_job_id ? { block: false, clearLoop: true } : { block: false }
-  const keep = args.loop.cron_job_id ?? marked[0]?.id
+  const recorded = args.loop.cron_job_id
+  if (recorded && !marked.some((c) => c.id === recorded)) {
+    // The recorded id is stale: keep the first live marked cron and record it.
+    const [first, ...others] = marked
+    const del = others.length > 0 ? ` and CronDelete ${ids(others)}` : ""
+    return {
+      block: true,
+      reason: `Continuity Loop cron id not recorded; call loop_tick({ cron_job_id: "${first?.id}" })${del}.`,
+    }
+  }
+  const keep = recorded ?? marked[0]?.id
   const extra = marked.filter((c) => c.id !== keep)
   if (extra.length === 0) return { block: false }
   return { block: true, reason: `Continuity Loop has extra crons; CronDelete ${ids(extra)}.` }

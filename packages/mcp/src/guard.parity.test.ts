@@ -204,6 +204,8 @@ describe("parity: loopCronDecision", () => {
     { loop: lp("b"), sessionCrons: [m("a"), m("b"), m("c")], stopHookActive: false },
     { loop: lp(null), sessionCrons: [m("a"), m("b")], stopHookActive: false },
     { loop: lp("a"), sessionCrons: [m("a")], stopHookActive: false },
+    { loop: lp("gone"), sessionCrons: [u, m("a"), m("b")], stopHookActive: false },
+    { loop: lp("gone"), sessionCrons: [m("a")], stopHookActive: false },
     { loop: null, sessionCrons: [m("a")], stopHookActive: true },
     { loop: null, sessionCrons: undefined, stopHookActive: false },
   ]
