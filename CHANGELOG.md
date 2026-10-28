@@ -11,6 +11,12 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6] - 2026-10-29
+
+### Fixed
+
+- **`/continuity:start` with no task** no longer renders a broken "If `` is given" line; the skill now reads cleanly whether or not a task follows the command.
+
 ## [0.1.0-alpha.5] - 2026-10-29
 
 > **Team mode: upgrade the server first.** Deploy drizzle migration `0003` and

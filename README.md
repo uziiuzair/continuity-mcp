@@ -1,6 +1,6 @@
 # Continuity
 
-> ⚠️ **Alpha.** This is an early alpha release (`0.1.0-alpha.5`). Everything here —
+> ⚠️ **Alpha.** This is an early alpha release (`0.1.0-alpha.6`). Everything here —
 > the local and team flavors, the schema, the plugin, and the tool surface — is
 > unstable and may change without notice. Expect rough edges and breaking changes;
 > not yet recommended for production-critical workflows.
