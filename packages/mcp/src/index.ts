@@ -22,6 +22,7 @@ import { registerAgentTools } from "./tools/agent.js"
 import { registerDecisionTools } from "./tools/decisions.js"
 import { registerGithubTools } from "./tools/github.js"
 import { registerHandoffTools } from "./tools/handoffs.js"
+import { registerLoopTools } from "./tools/loop.js"
 import { registerMessageTools } from "./tools/messages.js"
 import { registerPlanTools } from "./tools/plan.js"
 import { registerTaskTools } from "./tools/tasks.js"
@@ -343,6 +344,7 @@ async function runServer(rt: Runtime): Promise<void> {
   registerTaskTools(server, toolContext)
   registerHandoffTools(server, toolContext)
   registerMessageTools(server, toolContext)
+  registerLoopTools(server, toolContext)
 
   // Team-flavor extras (github_*, plan_*, escalate). These proxy to the
   // Cloudflare Worker via the TeamBackend surface that only RemoteBackend

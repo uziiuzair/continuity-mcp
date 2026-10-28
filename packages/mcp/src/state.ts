@@ -27,6 +27,24 @@ export type SessionState = {
   pending_inbound?: PendingInboundEntry[] | null
   collision_sent?: CollisionSentMap | null
   message_warned?: string[] | null
+  // Continuity Loop state (tools/loop.ts). null once the loop stops.
+  loop?: LoopState | null
+  // The session's latest cwd, recorded on CwdChanged so loop_tick reports the
+  // worktree the session moved into.
+  current_dir?: string | null
+}
+
+// "Since the last tick" is an id diff against `seen` (pruned to what the
+// latest tick still saw, so the lists never grow unbounded).
+export type LoopState = {
+  started_at: number
+  task: string | null
+  tier: 1 | 2 | 3
+  quiet_streak: number
+  own_work_done: boolean
+  cron_job_id: string | null
+  last_tick_at: number
+  seen: { messages: string[]; responses: string[]; handoffs: string[]; decisions: string[]; sessions: string[] }
 }
 
 // State lives under the plugin's persistent data dir (survives plugin updates).
