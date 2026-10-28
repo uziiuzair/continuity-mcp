@@ -34,7 +34,7 @@ export type SessionState = {
 // primitives in-process) keep this state in its own directory; otherwise
 // CLAUDE_PLUGIN_DATA, which Claude Code exports to MCP subprocesses; fall back
 // to the conventional path so the shim is testable standalone.
-function dataDir(): string {
+export function dataDir(): string {
   const own = process.env.CONTINUITY_STATE_DIR
   if (own && own.trim()) return own
   const fromEnv = process.env.CLAUDE_PLUGIN_DATA

@@ -3,12 +3,22 @@
 // out to the bundled shim's `--snapshot` mode (which checks in and prints the
 // snapshot for whichever flavor is configured). Fail-open everywhere.
 import { duplicateInstallWarningFromDisk } from "./lib/doctor.mjs"
+import { findClaudePid, writeRendezvous } from "./lib/identity.mjs"
 import { nodeSupported, runShim } from "./lib/run-shim.mjs"
 import { readStdinJson } from "./lib/stdin.mjs"
 
 async function main() {
   const input = await readStdinJson()
   const cwd = input.cwd || process.cwd()
+  // Tell the MCP shim which Claude session it serves (it gets no hook input).
+  // Written first: the shim is launching concurrently and polls for this.
+  if (typeof input.session_id === "string" && input.session_id) {
+    try {
+      writeRendezvous(findClaudePid(), input.session_id)
+    } catch {
+      // fail open: the shim still has the CLAUDE_CODE_SESSION_ID env var
+    }
+  }
   if (!nodeSupported()) {
     // Don't fail silently: tell the user (once per session, in context) why
     // the plugin is inactive instead of leaving them with a dead install.
