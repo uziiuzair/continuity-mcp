@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { HOOK_SESSION_ID_ENV, SESSION_ID_ENV, resolveClaudeSessionId } from "./identity.js"
+import { HOOK_SESSION_ID_ENV, SESSION_ID_ENV, resolveClaudeSessionId, setAncestorChainForTest } from "./identity.js"
 
 // The rendezvous writer is the SessionStart hook's plain-ESM module (no types);
 // a computed specifier keeps tsc out of resolving it.
@@ -42,6 +42,7 @@ afterEach(() => {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
   }
+  setAncestorChainForTest(null)
   rmSync(stateDir, { recursive: true, force: true })
 })
 
@@ -57,8 +58,23 @@ describe("resolveClaudeSessionId", () => {
   })
 
   it("retries until the rendezvous appears", async () => {
+    setAncestorChainForTest([{ pid: process.ppid, startedAt: 0, isClaude: true }])
     setTimeout(() => writeByPid(process.ppid, { session_id: "late-id", written_at: Date.now() }), 150)
     expect(await resolveClaudeSessionId({ retries: 5, delayMs: 100 })).toBe("late-id")
+  })
+
+  it("no claude ancestor → no polling (non-Claude hosts start fast)", async () => {
+    setAncestorChainForTest([{ pid: process.ppid, startedAt: 0, isClaude: false }])
+    setTimeout(() => writeByPid(process.ppid, { session_id: "late-id", written_at: Date.now() }), 50)
+    const t0 = Date.now()
+    expect(await resolveClaudeSessionId({ retries: 5, delayMs: 100 })).toBeNull()
+    expect(Date.now() - t0).toBeLessThan(50)
+  })
+
+  it("no claude ancestor still reads a rendezvous already present", async () => {
+    setAncestorChainForTest([{ pid: process.ppid, startedAt: 0, isClaude: false }])
+    writeByPid(process.ppid, { session_id: "present-id", written_at: Date.now() })
+    expect(await resolveClaudeSessionId({ retries: 5, delayMs: 100 })).toBe("present-id")
   })
 
   it("ignores a rendezvous older than the process", async () => {

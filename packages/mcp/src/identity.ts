@@ -34,7 +34,7 @@ export const HOOK_SESSION_ID_ENV = "CONTINUITY_CLAUDE_SESSION_ID"
 // launch.mjs re-exec and a hook-launched shim run.
 const MAX_ANCESTORS = 4
 
-type Ancestor = { pid: number; startedAt: number | null; isClaude: boolean }
+export type Ancestor = { pid: number; startedAt: number | null; isClaude: boolean }
 
 // `ps -o ppid=,lstart=,comm=` under LC_ALL=C prints e.g.
 // "26370 Wed Oct 28 18:52:17 2026 claude": lstart is always five fields.
@@ -79,6 +79,11 @@ function ancestorChain(): Ancestor[] {
   return chain
 }
 
+// Test seam: pin (or with null, reset) the memoized ancestor chain.
+export function setAncestorChainForTest(chain: Ancestor[] | null): void {
+  memoChain = chain
+}
+
 // A rendezvous counts only if it was written after its pid's process started
 // (lstart has 1 s resolution and rounds down, so a fresh write always passes);
 // that rejects a stale file left by a dead process whose pid was reused.
@@ -104,8 +109,8 @@ function readChain(chain: Ancestor[]): string | null {
 }
 
 // Resolve Claude's session id: the hook-provided env var, then
-// CLAUDE_CODE_SESSION_ID, else the rendezvous (retried, since SessionStart and
-// the MCP launch race), else null.
+// CLAUDE_CODE_SESSION_ID, else the rendezvous (retried when a `claude` ancestor
+// exists, since SessionStart and the MCP launch race), else null.
 //
 // `preferRendezvous` is for the long-lived server: after `/clear` Claude Code
 // starts a new session (SessionStart rewrites the rendezvous) but the server's
@@ -124,10 +129,13 @@ export async function resolveClaudeSessionId(
   const chain = ancestorChain()
   if (fromEnv) return readChain(chain) ?? fromEnv
   if (chain.length === 0) return null
+  // Only a Claude host writes the rendezvous: without a `claude` ancestor,
+  // read once and don't poll, so non-Claude hosts skip the ~1s wait.
+  const maxRetries = chain.some((a) => a.isClaude) ? retries : 0
   for (let attempt = 0; ; attempt++) {
     const id = readChain(chain)
     if (id) return id
-    if (attempt >= retries) return null
+    if (attempt >= maxRetries) return null
     await new Promise((resolve) => setTimeout(resolve, delayMs))
   }
 }
