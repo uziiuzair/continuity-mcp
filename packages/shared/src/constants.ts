@@ -31,3 +31,16 @@ export const HANDOFF_STATUSES = ["pending", "accepted", "completed", "expired"] 
 export const FILE_TOOLS = ["Write", "Edit", "MultiEdit", "NotebookEdit"] as const
 export const MESSAGE_KINDS = ["message", "collision", "decision"] as const
 export const MESSAGE_STATUSES = ["pending", "responded", "dismissed"] as const
+
+// ---- Continuity Loop ----
+
+/** Back-off ladder: poll interval and how many quiet ticks before moving on. */
+export const LOOP_TIERS = [
+  { tier: 1, minutes: 5, quietTicks: 5 },
+  { tier: 2, minutes: 10, quietTicks: 5 },
+  { tier: 3, minutes: 30, quietTicks: 2 },
+] as const
+/** Marker identifying the loop's cron job prompt. */
+export const LOOP_CRON_MARKER = "[continuity-loop]"
+/** Full prompt of the loop's cron job. */
+export const LOOP_CRON_PROMPT = `${LOOP_CRON_MARKER} Continuity Loop tick: call loop_tick and follow the continuity:loop skill.`
