@@ -39,12 +39,14 @@ export function parseAllowlist(raw) {
 
 // Mirror of gate.ts identityHash. The hooks MUST derive the same cwdHash as
 // the shim or they read a different state file and every gate silently fails
-// open. A Claude session id is the whole identity; otherwise the legacy
-// per-toplevel hash, salted by CONTINUITY_SESSION_ID when set.
+// open. A Claude session id is the identity; otherwise the legacy
+// per-toplevel hash. CONTINUITY_SESSION_ID salts either when set.
 function identityHash(toplevel, claudeSessionId) {
   const sessionSalt = process.env.CONTINUITY_SESSION_ID
   const hashInput = claudeSessionId
-    ? `claude:${claudeSessionId}`
+    ? sessionSalt
+      ? `claude:${claudeSessionId} ${sessionSalt}`
+      : `claude:${claudeSessionId}`
     : sessionSalt
       ? `${toplevel} ${sessionSalt}`
       : toplevel

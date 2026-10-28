@@ -107,13 +107,15 @@ export function parseAllowlist(raw: string | undefined): string[] {
 }
 
 // Identity hash. With a Claude Code session id, the identity is that session
-// alone: stable across `cd` and worktree moves, distinct for two sessions in
-// one checkout. Without one (standalone shim, tests), the legacy per-toplevel
-// hash, salted by CONTINUITY_SESSION_ID when set.
+// (salted by CONTINUITY_SESSION_ID when set): stable across `cd` and worktree
+// moves, distinct for two sessions in one checkout. Without one (standalone
+// shim, tests), the legacy per-toplevel hash, salted the same way.
 function identityHash(toplevel: string, claudeSessionId: string | null | undefined): string {
   const sessionSalt = process.env.CONTINUITY_SESSION_ID
   const hashInput = claudeSessionId
-    ? `claude:${claudeSessionId}`
+    ? sessionSalt
+      ? `claude:${claudeSessionId} ${sessionSalt}`
+      : `claude:${claudeSessionId}`
     : sessionSalt
       ? `${toplevel} ${sessionSalt}`
       : toplevel

@@ -26,6 +26,14 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 - **Stop hook guards leftover loop crons:** if a loop has ended but its cron is
   still scheduled, the hook asks for a `CronDelete`.
 
+### Changed
+
+- **`CONTINUITY_SESSION_ID` salts the Claude-session identity.** With both a
+  Claude session id and `CONTINUITY_SESSION_ID` set, the identity hash is
+  `sha256("claude:" + id + " " + CONTINUITY_SESSION_ID)`, so the override is no
+  longer silently ignored inside a Claude session. Without the env var the hash
+  is unchanged.
+
 ### Known limits
 
 - Team-mode Worker has no message routes yet, so `message_send` and the other

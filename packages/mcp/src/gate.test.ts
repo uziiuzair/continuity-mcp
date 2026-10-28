@@ -127,10 +127,12 @@ describe("Claude session identity", () => {
     expect(here?.cwdHash).toEqual(there?.cwdHash)
   })
 
-  it("claude id wins over the CONTINUITY_SESSION_ID salt", () => {
+  it("CONTINUITY_SESSION_ID salts the claude id hash", () => {
     const plain = resolveRepoContext(HERE, undefined, { claudeSessionId: "claude-A" })?.cwdHash
     process.env.CONTINUITY_SESSION_ID = "sess-A"
-    expect(resolveRepoContext(HERE, undefined, { claudeSessionId: "claude-A" })?.cwdHash).toEqual(plain)
+    const salted = resolveRepoContext(HERE, undefined, { claudeSessionId: "claude-A" })?.cwdHash
+    expect(salted).not.toEqual(plain)
+    expect(salted).toBe(createHash("sha256").update("claude:claude-A sess-A").digest("hex").slice(0, 16))
   })
 
   it("no claude id → legacy hash", () => {

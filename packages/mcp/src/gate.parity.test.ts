@@ -68,9 +68,9 @@ describe("parity: resolveRepoContext", () => {
     const ts = resolveRepoContext(repoDir, undefined, { claudeSessionId: "claude-parity" })
     const mj = mirror.resolveRepoContext(repoDir, undefined, { claudeSessionId: "claude-parity" })
     expect(mj).toEqual(ts)
-    // The Claude id is the whole identity: the salt no longer applies.
+    // The salt applies on top of the Claude id.
     delete process.env.CONTINUITY_SESSION_ID
-    expect(resolveRepoContext(repoDir, undefined, { claudeSessionId: "claude-parity" })).toEqual(ts)
+    expect(resolveRepoContext(repoDir, undefined, { claudeSessionId: "claude-parity" })?.cwdHash).not.toEqual(ts?.cwdHash)
   })
 
   it("agrees on the legacy hash for a null or empty Claude session id", () => {
