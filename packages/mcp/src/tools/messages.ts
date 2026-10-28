@@ -14,7 +14,7 @@ export function registerMessageTools(server: McpServer, ctx: ToolContext): void 
     {
       title: "Send a message to another session",
       description:
-        "Message another live session (to_session) or broadcast to all. Set about_file (repo-relative path) when coordinating a file collision — the edit block on that file lifts when they respond or the message expires. Delivery: the recipient sees it on their next prompt. Provide exactly one of to_session or broadcast.",
+        "Message another live session (to_session) or broadcast to all. A broadcast with scope 'repo' reaches only sibling sessions in the same repo (including its other worktrees). Set about_file (repo-relative path) when coordinating a file collision — the edit block on that file lifts when they respond or the message expires. Delivery: the recipient sees it on their next prompt. Provide exactly one of to_session or broadcast.",
       inputSchema: {
         to_session: z.string().optional(),
         broadcast: z.boolean().optional(),

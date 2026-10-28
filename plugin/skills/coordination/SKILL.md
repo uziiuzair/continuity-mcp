@@ -34,6 +34,12 @@ to refresh it during a session.
 - `agent_report_focus` — update your own current focus.
 - `agent_get` — full detail for one session by id.
 
+## Staying in touch
+
+If other sessions are active in this repo, start the Continuity Loop (the
+`continuity:loop` skill, or `/continuity:start`). It checks for messages and
+handoffs on a schedule that backs off while things are quiet.
+
 ## Notes
 
 - These tools are inert outside a git repo (and outside the allowlist, if one is

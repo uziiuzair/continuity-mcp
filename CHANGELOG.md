@@ -11,6 +11,26 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Added
+
+- **Continuity Loop.** A session cron job that polls for messages, responses and
+  handoffs and backs off while quiet (5 min x5, 10 min x5, 30 min x2, then
+  stops). New `loop_tick` MCP tool, `continuity:loop` skill and
+  `/continuity:start` command.
+- **Per-Claude-session identity.** Each Claude session gets its own Continuity
+  identity, so parallel sessions in one checkout no longer collapse into one.
+- **Worktree awareness.** Sessions show their worktree and branch, and sessions
+  in the same repo are marked.
+- **Repo scoping (opt-in).** `agent_list_active` takes `same_repo`, and
+  `message_send` takes `scope: "repo"`. Defaults are unchanged.
+- **Stop hook guards leftover loop crons:** if a loop has ended but its cron is
+  still scheduled, the hook asks for a `CronDelete`.
+
+### Known limits
+
+- Team-mode Worker has no message routes yet, so `message_send` and the other
+  message tools fail there; the loop continues without announcements.
+
 ## [0.1.0-alpha.4] - 2026-10-28
 
 ### Fixed

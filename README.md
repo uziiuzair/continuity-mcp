@@ -71,6 +71,31 @@ Configuration (plugin options):
 > the Worker routes for team mode are a follow-up (calls fail loudly against a
 > team server until then).
 
+## Continuity Loop
+
+When other sessions are active in your repo, the **Continuity Loop** keeps you in
+touch with them. Run `/continuity:start [task description]` (or let the
+`continuity:loop` skill start it): the agent announces its task, worktree/branch
+and path to sibling sessions in the repo, then a session cron job calls
+`loop_tick` to answer messages, act on handoffs and report what is new. It backs
+off while quiet and stops by itself:
+
+| Tier | Interval | Quiet ticks before moving on |
+|---|---|---|
+| 1 | 5 min | 5, then tier 2 |
+| 2 | 10 min | 5, then tier 3 |
+| 3 | 30 min | 2, then stop |
+
+**What counts as a reply:** a new inbound message (direct or broadcast), a
+response to a message you sent, or a new handoff for you. An active tick resets
+to tier 1. Decisions, file activity and sessions joining or leaving are reported
+but never count. When the agent finishes its own work it says so once and drops a
+tier, and stays responsive.
+
+Cron jobs are session-only and expire after 7 days. Known limit: the team-mode
+Worker has no message routes yet, so announcements and message tools fail there
+and the loop runs without them.
+
 ## Install
 
 In Claude Code, add this repo as a plugin marketplace and install the plugin:

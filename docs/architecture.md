@@ -178,6 +178,15 @@ the git toplevel, truncated to 16 hex chars) that everything else — `checkin`,
 sessions against one checkout can give each a distinct continuity identity instead of
 collapsing into one shared session per checkout.
 
+**Session identity.** When a Claude session id is known, the identity hash is
+`sha256("claude:" + session_id)` truncated to 16 hex chars, so each Claude session is
+distinct even in a shared checkout. Hooks get `session_id` in their input; the MCP shim
+resolves it from `CLAUDE_CODE_SESSION_ID`, falling back to a pid rendezvous (SessionStart
+writes `sessions/by-pid/<claude pid>.json`, found via the shim's ancestor chain). After
+`/clear` Claude Code starts a new session while the long-lived shim's env still holds the
+old id, so the shim re-resolves, preferring a fresh rendezvous, and checks in under the new
+identity. With no Claude session id the hash is the checkout-based form above.
+
 ## Data model
 
 Both schemas share the same tables (the SQLite mirror drops `users` and
