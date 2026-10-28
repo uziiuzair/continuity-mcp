@@ -1,6 +1,6 @@
 # Continuity
 
-> ⚠️ **Alpha.** This is an early alpha release (`0.1.0-alpha.4`). Everything here —
+> ⚠️ **Alpha.** This is an early alpha release (`0.1.0-alpha.5`). Everything here —
 > the local and team flavors, the schema, the plugin, and the tool surface — is
 > unstable and may change without notice. Expect rough edges and breaking changes;
 > not yet recommended for production-critical workflows.
@@ -145,7 +145,9 @@ the SessionStart hook also warns about this in-session).
 
 ## Status
 
-🚧 Early development. `0.1.0-alpha.4` fixes `claude --worktree` (broken by
+🚧 Early development. `0.1.0-alpha.5` adds the Continuity Loop
+(`/continuity:start`), per-session identity and worktree awareness;
+`0.1.0-alpha.4` fixes `claude --worktree` (broken by
 alpha.3's worktree hooks); `0.1.0-alpha.3` added direct messaging, collision
 negotiation, and reply enforcement (see [`CHANGELOG.md`](./CHANGELOG.md)).
 

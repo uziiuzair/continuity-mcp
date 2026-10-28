@@ -11,6 +11,8 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5] - 2026-10-29
+
 > **Team mode: upgrade the server first.** Deploy drizzle migration `0003` and
 > the updated Worker before rolling out this plugin. Older Workers ignore
 > `same_repo_key`, so every session reads as same-repo.
