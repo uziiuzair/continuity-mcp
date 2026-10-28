@@ -3,7 +3,7 @@
 // and prints this markdown; the hook injects it as additionalContext. Backend-
 // agnostic: works identically for the local and remote flavors.
 
-import { isAbsolute, relative } from "node:path"
+import { isAbsolute, relative, sep } from "node:path"
 import { type ActiveSession, type Decision, type Handoff, LOOP_TIERS, type Message, type RecentFileActivity } from "@continuity/shared"
 import type { SessionState } from "./state.js"
 
@@ -30,7 +30,7 @@ export function worktreeSegment(s: ActiveSession, mainCheckout: string | null | 
   let path = s.worktree_path ?? "?"
   if (mainCheckout && s.worktree_path) {
     const rel = relative(mainCheckout, s.worktree_path)
-    if (rel && !rel.startsWith("..") && !isAbsolute(rel)) path = rel
+    if (rel && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)) path = rel
   }
   return ` · worktree ${branch} @ ${path}`
 }

@@ -12,6 +12,7 @@ import { LocalBackend } from "./backends/local.js"
 import { RemoteBackend } from "./backends/remote.js"
 import { type DeltaMemory, type SnapshotData, computeDeltas } from "./deltas.js"
 import { type SettingsLike, duplicateInstallWarning, listContinuityInstalls } from "./doctor.js"
+import { doctorIdentityLines } from "./doctor-lines.js"
 import { type RepoContext, resolveRepoContext } from "./gate.js"
 import { buildOthersCache, buildPendingInbound, reconcileCollisionSent } from "./guard.js"
 import { resolveClaudeSessionId } from "./identity.js"
@@ -200,9 +201,7 @@ async function runDoctor(rt: Runtime | null): Promise<void> {
     } catch (err) {
       out.push(`backend: UNREACHABLE — ${err instanceof Error ? err.message : String(err)}`)
     }
-    const wt = rt.repo.worktree
-    out.push(wt.is_worktree ? `worktree: yes (branch ${wt.branch ?? "detached"}, main checkout ${wt.main_checkout ?? "unknown"})` : "worktree: no")
-    out.push(rt.claudeSessionId ? `identity: claude session ${rt.claudeSessionId}` : "identity: per-directory (no Claude session id)")
+    out.push(...doctorIdentityLines(rt.repo.worktree, rt.claudeSessionId))
     const state = readState(rt.repo.cwdHash)
     out.push(`session state: ${state?.session_id ? `session ${state.session_id}` : "none yet"} (${stateFilePath(rt.repo.cwdHash)})`)
   }

@@ -217,8 +217,16 @@ describe("renderSnapshot", () => {
         active: [session({ is_worktree: true, branch: null, worktree_path: "/elsewhere/wt", repo_key: "other" })],
       })
       expect(out).toContain("- worker (Uzi) · worktree (detached) @ /elsewhere/wt · ")
-      expect(out).not.toContain("same repo\n")
+      expect(out).not.toContain("same repo")
       expect(out).not.toContain(START)
+    })
+
+    it("treats a directory named ..foo inside the main checkout as inside", () => {
+      const out = renderSnapshot({
+        ...empty, mainCheckout: "/r/main",
+        active: [session({ is_worktree: true, branch: "b", worktree_path: "/r/main/..foo" })],
+      })
+      expect(out).toContain("worktree b @ ..foo")
     })
 
     it("omits the worktree segment for non-worktree sessions", () => {
@@ -249,9 +257,10 @@ describe("renderSnapshot", () => {
       const live = out.slice(out.indexOf("### Other active sessions"))
       expect(live).toMatch(/^### Other active sessions\n- worker \(Uzi\) · "auth" · \d+s ago\n\n### Files other sessions are touching \(30m\)\n- none$/)
       const intro = out.slice(0, out.indexOf("\n\n## Live snapshot"))
-      expect(intro.split("\n").filter((l) => !l.includes("continuity:loop")).join("\n")).toContain(
-        "- Record calls others must respect with `decision_write`",
-      )
+      const introLines = intro.split("\n")
+      expect(introLines).toHaveLength(10)
+      expect(introLines.filter((l) => l.includes("continuity:loop"))).toHaveLength(1)
+      expect(introLines.filter((l) => !l.includes("start the Continuity Loop"))).toHaveLength(9) // the original intro
     })
 
     it("stays under 10,000 chars with maximal data", () => {
