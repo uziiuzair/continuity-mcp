@@ -23,6 +23,7 @@ import { registerAgentTools } from "./tools/agent.js"
 import { registerDecisionTools } from "./tools/decisions.js"
 import { registerGithubTools } from "./tools/github.js"
 import { registerHandoffTools } from "./tools/handoffs.js"
+import { promptSyncFocus } from "./loop.js"
 import { registerLoopTools } from "./tools/loop.js"
 import { registerMessageTools } from "./tools/messages.js"
 import { registerPlanTools } from "./tools/plan.js"
@@ -147,11 +148,13 @@ async function runSnapshot(rt: Runtime): Promise<void> {
 // never queues coordination queries (this is the per-prompt latency budget).
 const DELTA_THROTTLE_MS = 20_000
 
-// `--prompt-sync <focus>`: heartbeat the focus, then print what changed since
+// `--prompt-sync <prompt>`: heartbeat the focus, then print what changed since
 // the last sync (new sessions, others' file activity, decisions, handoffs).
 // Run by UserPromptSubmit; any output is injected as additionalContext.
-async function runPromptSync(rt: Runtime, focus: string): Promise<void> {
+async function runPromptSync(rt: Runtime, prompt: string): Promise<void> {
   const { repo, backend, agentLabel } = rt
+  // A loop cron tick still heartbeats and gets deltas, but keeps the focus.
+  const focus = promptSyncFocus(prompt)
   let sessionId = readState(repo.cwdHash)?.session_id ?? null
   try {
     if (!sessionId) {
@@ -161,7 +164,7 @@ async function runPromptSync(rt: Runtime, focus: string): Promise<void> {
     }
     await backend.heartbeat({
       session_id: sessionId,
-      ...(focus.trim() ? { current_focus: focus.slice(0, 280) } : {}),
+      ...(focus ? { current_focus: focus } : {}),
     })
   } catch {
     return // backend unreachable — no deltas either; fail open

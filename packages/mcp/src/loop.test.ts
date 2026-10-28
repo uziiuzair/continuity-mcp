@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { type LoopLadder, cronFor, stepLadder } from "./loop.js"
+import { LOOP_CRON_PROMPT } from "@continuity/shared"
+import { type LoopLadder, cronFor, promptSyncFocus, stepLadder } from "./loop.js"
 
 const L = (tier: 1 | 2 | 3, quiet_streak = 0, own_work_done = false): LoopLadder => ({
   tier,
@@ -105,5 +106,19 @@ describe("cronFor", () => {
     expect(cronFor(5)).toBe("*/5 * * * *")
     expect(cronFor(10)).toBe("*/10 * * * *")
     expect(cronFor(30)).toBe("*/30 * * * *")
+  })
+})
+
+describe("promptSyncFocus", () => {
+  it("a loop cron tick prompt never becomes the focus", () => {
+    expect(promptSyncFocus(LOOP_CRON_PROMPT)).toBe("")
+    expect(promptSyncFocus(`  ${LOOP_CRON_PROMPT}`)).toBe("")
+    expect(promptSyncFocus("please look at [continuity-loop] output")).toBe("")
+  })
+
+  it("an ordinary prompt is the focus, capped at 280 chars", () => {
+    expect(promptSyncFocus("fix the login bug")).toBe("fix the login bug")
+    expect(promptSyncFocus("x".repeat(400))).toHaveLength(280)
+    expect(promptSyncFocus("   ")).toBe("")
   })
 })

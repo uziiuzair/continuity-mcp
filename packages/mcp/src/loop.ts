@@ -2,7 +2,7 @@
  * Continuity Loop back-off ladder. Pure state machine: no I/O.
  * `loop_tick` calls `stepLadder` once per tick.
  */
-import { LOOP_TIERS } from "@continuity/shared"
+import { LOOP_CRON_MARKER, LOOP_TIERS } from "@continuity/shared"
 
 export type LoopTier = 1 | 2 | 3
 export type LoopLadder = { tier: LoopTier; quiet_streak: number; own_work_done: boolean }
@@ -11,6 +11,14 @@ export type LoopVerdict = {
   interval_minutes: number
   cron: string
   reason: string
+}
+
+// The focus a prompt-sync should heartbeat for a user prompt ("" = leave the
+// focus unchanged). A loop cron tick's prompt is not the user's focus, so it
+// must not overwrite current_focus every tick.
+export function promptSyncFocus(prompt: string): string {
+  if (prompt.includes(LOOP_CRON_MARKER)) return ""
+  return prompt.trim() ? prompt.slice(0, 280) : ""
 }
 
 export function cronFor(minutes: number): string {
