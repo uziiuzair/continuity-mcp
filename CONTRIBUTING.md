@@ -54,20 +54,25 @@ The one place a build is required is the committed plugin payload (below).
 
 ## Building the plugin payload
 
-The Claude Code plugin ships a **single committed esbuild bundle** at
-`plugin/mcp/index.mjs`. Regenerate it with:
+The Claude Code plugin ships a **committed esbuild bundle** in `plugin/mcp/`
+(`index.mjs` plus vendor chunks under `chunks/` and `vendor/`). Regenerate it with:
 
 ```bash
 pnpm --filter @continuity/mcp build
 ```
 
-This runs esbuild (ESM, Node target) to produce one **pure-JS** file. The local
+This runs esbuild (ESM, Node target) to produce **pure-JS** files. The local
 backend uses Node's built-in `node:sqlite`, so there is **no native dependency**
 and **no `node_modules`** in the payload — it's cross-platform as-is. Notes:
 
 - Requires **Node ≥ 22** (`node:sqlite`); the launcher passes `--experimental-sqlite`
   on Node 22.x–23.x (a no-op on 24+).
-- A fresh clone should reproduce `plugin/mcp/index.mjs` deterministically — if your
+- Vendor code is split into chunks so **no file exceeds 256 KiB** — the plugin
+  directory's validator only inspects files up to that size. The build fails if
+  one does.
+- ajv is stubbed out of the bundle (the MCP SDK imports it only for elicitation,
+  which Continuity doesn't use), so the payload ships no runtime code generator.
+- A fresh clone should reproduce `plugin/mcp/` deterministically — if your
   change affects the shim, **rebuild and commit the regenerated payload** so the
   plugin stays in sync with the source.
 

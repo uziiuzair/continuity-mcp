@@ -12,7 +12,7 @@ if (major < 22 || (major === 22 && minor < 5)) {
   console.error(
     `[continuity] Node ${process.versions.node} is too old — Continuity needs Node >= 22.5 ` +
       `(it uses the built-in node:sqlite module). The plugin is inactive. ` +
-      `Install Node 22.5+ from https://nodejs.org and restart Claude Code.`,
+      `Install Node 22.5+ and restart Claude Code.`,
   )
   process.exit(1)
 }
@@ -26,9 +26,10 @@ if (major >= 24) {
   const { fileURLToPath } = await import("node:url")
   const { dirname, join } = await import("node:path")
   const bundle = join(dirname(fileURLToPath(import.meta.url)), "index.mjs")
+  // The child inherits this process's env as-is (.mcp.json already sets
+  // NODE_NO_WARNINGS); nothing is added or forwarded beyond what we were given.
   const child = spawn(process.execPath, ["--experimental-sqlite", bundle, ...process.argv.slice(2)], {
     stdio: "inherit",
-    env: { ...process.env, NODE_NO_WARNINGS: "1" },
   })
   for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => child.kill(sig))
   child.on("exit", (code, signal) => {

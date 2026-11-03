@@ -8,8 +8,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# The plugin payload (plugin/mcp/index.mjs) IS committed so the plugin installs
-# from the marketplace without a build step. It's a pure-JS bundle (local backend
+# The plugin payload (plugin/mcp/: index.mjs + chunks/ + vendor/) IS committed so the plugin installs
+# from the marketplace without a build step. It's pure JS (local backend
 # uses Node's built-in node:sqlite — no native deps), so it's cross-platform and
 # needs no node_modules. Regenerate with `pnpm --filter @continuity/mcp build`.
 
