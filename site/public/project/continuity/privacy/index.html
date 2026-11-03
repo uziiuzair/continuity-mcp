@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy – Continuity</title>
+  <meta name="description" content="Privacy policy for Continuity, the open-source agent collaboration plugin for Claude Code.">
+  <link rel="canonical" href="https://uziiuzair.com/project/continuity/privacy/">
+  <link rel="icon" type="image/png" href="/project/continuity/icon.png">
+  <meta name="theme-color" content="#4f46e5">
+  <link rel="stylesheet" href="/project/continuity/styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="/project/continuity/"><img src="/project/continuity/icon.png" alt="" width="28" height="28">Continuity</a>
+      <nav class="nav">
+        <a href="/project/continuity/">Home</a>
+        <a href="https://github.com/uziiuzair/continuity-mcp">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap narrow prose">
+    <h1>Privacy Policy</h1>
+    <p class="meta">Effective November 3, 2026</p>
+
+    <div class="summary">
+      <h2>The short version</h2>
+      <ul>
+        <li>Continuity's publisher runs <strong>no servers</strong> and <strong>collects no data</strong>. There is no telemetry, analytics or tracking.</li>
+        <li>In <strong>local mode</strong> (the default), everything stays in a file on your own machine.</li>
+        <li>In <strong>team mode</strong>, coordination data goes only to a server that you or your team deploy and control.</li>
+        <li>Continuity stores file <strong>paths</strong>, never file contents.</li>
+      </ul>
+    </div>
+
+    <h2>Who we are</h2>
+    <p>Continuity ("the plugin") is an open-source plugin and MCP server for Claude Code, published by Uzair Hayat ("we", "us"). Its source code is public at <a href="https://github.com/uziiuzair/continuity-mcp">github.com/uziiuzair/continuity-mcp</a>, so anything described here can be checked against the code. This policy covers the plugin and this website.</p>
+
+    <h2>Data we collect</h2>
+    <p>None. We don't operate a backend for Continuity, and the plugin never sends anything to us. It contains no telemetry, crash reporting, analytics or advertising code. We cannot see your sessions, your code or anything the plugin stores.</p>
+
+    <h2>What the plugin processes on your behalf</h2>
+    <p>To coordinate parallel sessions, the plugin records the following activity. Where it is stored depends on the mode you choose (see below).</p>
+    <ul>
+      <li><strong>Session presence:</strong> a session ID and label, a hash of the working directory, the git repository name, branch and worktree path, status (active, idle, gone) and timestamps. In local mode the label includes your operating-system username.</li>
+      <li><strong>Current focus:</strong> the text of the prompt you submit is saved as your session's current focus, so other sessions can see what you are working on.</li>
+      <li><strong>File activity:</strong> the paths of files you edit, the tool used and when. File contents are never read for this or stored.</li>
+      <li><strong>Coordination records:</strong> decisions, task claims (repository and issue number), handoffs, and messages between sessions, including the text you or your agents write in them.</li>
+      <li><strong>Audit log:</strong> an append-only record of coordination events, such as check-ins, check-outs and claims.</li>
+      <li><strong>Configuration:</strong> the plugin options you set. Your team API key, if any, is stored by Claude Code in your system keychain, not in plain-text settings.</li>
+    </ul>
+
+    <h2>Local mode (default)</h2>
+    <p>With no team server configured, all of the above is stored in a SQLite database on your machine (by default <code>~/.continuity/continuity.db</code>), plus small per-session state files in Claude Code's plugin data folder. Nothing is transmitted over the network.</p>
+
+    <h2>Team mode</h2>
+    <p>If you set a team API URL and key, the plugin sends the data listed above to that server so your teammates' sessions can see it. That server is a Cloudflare Worker and Postgres database that you or your organization deploy and operate. We have no access to it. Its operator, and the teammates who use it, can see the coordination data it holds. The server stores API keys only as one-way hashes.</p>
+    <p>A team server can optionally be configured by its operator to use these third-party services. None of them are enabled by default:</p>
+    <ul>
+      <li><strong>GitHub:</strong> to sync task claims with GitHub Projects and read a planning document from your repository, using a GitHub App you install.</li>
+      <li><strong>Anthropic API:</strong> for an optional "plan check", which sends a proposed task description and your repository's planning document to Claude for a verdict.</li>
+      <li><strong>Slack:</strong> to post escalations and a weekly digest to a webhook you provide.</li>
+    </ul>
+    <p>When enabled, data sent to these services is governed by their own privacy policies and by your agreements with them.</p>
+
+    <h2>Retention and deletion</h2>
+    <p>The plugin cleans up some data automatically: inactive sessions are marked as ended, old file activity is pruned, and expired task claims and messages lapse. Decisions and the audit log are append-only and are kept until you delete them.</p>
+    <p>You are in control of all stored data:</p>
+    <ul>
+      <li><strong>Local mode:</strong> delete <code>~/.continuity/continuity.db</code>, or uninstall the plugin.</li>
+      <li><strong>Team mode:</strong> retention is decided by whoever operates your team server. Contact them to access or delete data.</li>
+      <li>Use the <code>repoAllowlist</code> option to limit Continuity to the repositories you choose.</li>
+    </ul>
+
+    <h2>Sharing and selling</h2>
+    <p>We don't sell, rent or share personal data, because we never receive any.</p>
+
+    <h2>This website</h2>
+    <p>This site is a static page served by Cloudflare. It sets no cookies and runs no analytics or third-party scripts. As our hosting provider, Cloudflare processes standard request information, such as IP addresses, to deliver and secure the site, under <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare's privacy policy</a>.</p>
+
+    <h2>Children</h2>
+    <p>Continuity is a developer tool and is not directed at children under 18.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>If this policy changes, we will update the effective date above. Its full history is kept in the project's public git repository.</p>
+
+    <h2>Contact</h2>
+    <p>Questions about this policy or about Continuity's data handling: <a href="mailto:business@uziiuzair.com">business@uziiuzair.com</a>. To report a security issue, see <a href="https://github.com/uziiuzair/continuity-mcp/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Continuity is open source under the MIT license.</span>
+      <nav>
+        <a href="/project/continuity/">Home</a>
+        <a href="https://github.com/uziiuzair/continuity-mcp">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

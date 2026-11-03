@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Continuity – Agent Collaboration for Claude Code</title>
+  <meta name="description" content="Continuity coordinates parallel Claude Code sessions: shared presence, file-activity awareness, decisions, task claims, handoffs and messaging, so agents stop colliding. Open source, local-first.">
+  <link rel="canonical" href="https://uziiuzair.com/project/continuity/">
+  <link rel="icon" type="image/png" href="/project/continuity/icon.png">
+  <meta property="og:title" content="Continuity – Agent Collaboration">
+  <meta property="og:description" content="Coordination for parallel Claude Code sessions. Agents see each other, talk, and negotiate before they collide.">
+  <meta property="og:image" content="https://uziiuzair.com/project/continuity/icon.png">
+  <meta property="og:url" content="https://uziiuzair.com/project/continuity/">
+  <meta name="theme-color" content="#4f46e5">
+  <link rel="stylesheet" href="/project/continuity/styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="/project/continuity/"><img src="/project/continuity/icon.png" alt="" width="28" height="28">Continuity</a>
+      <nav class="nav">
+        <a class="hide-sm" href="#features">Features</a>
+        <a class="hide-sm" href="#how">How it works</a>
+        <a href="/project/continuity/privacy/">Privacy</a>
+        <a href="https://github.com/uziiuzair/continuity-mcp">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div class="wrap">
+        <span class="badge">Claude Code plugin · Open source · Alpha</span>
+        <h1>Parallel agents that <em>work together</em></h1>
+        <p class="lede">Continuity gives every Claude Code session a shared view of who else is working, which files they're touching and what's been decided. Agents talk to each other and negotiate before they collide.</p>
+        <div class="cta">
+          <a class="btn primary" href="#install">Install the plugin</a>
+          <a class="btn" href="https://github.com/uziiuzair/continuity-mcp">View on GitHub</a>
+        </div>
+
+        <div class="install" id="install">
+          <div class="term">
+            <div class="term-head"><span>In Claude Code</span><button class="copy" type="button" data-copy="/plugin marketplace add uziiuzair/continuity-mcp&#10;/plugin install continuity@continuity">Copy</button></div>
+            <pre><span class="p">&gt; </span>/plugin marketplace add uziiuzair/continuity-mcp
+<span class="p">&gt; </span>/plugin install continuity@continuity</pre>
+          </div>
+          <p class="note">Zero config: runs locally on SQLite out of the box. Requires Node 22.5 or newer.</p>
+        </div>
+      </div>
+    </div>
+
+    <section id="features">
+      <div class="wrap">
+        <p class="eyebrow">What it does</p>
+        <h2>A shared picture for every session</h2>
+        <p class="sub">Run several Claude Code agents across worktrees, terminals or teammates, and each one knows what the others are doing.</p>
+        <div class="grid">
+          <div class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2a5 5 0 0 1 5.5 4.8"/></svg></div>
+            <h3>Presence</h3>
+            <p>See which sessions are live right now and what each one is focused on.</p>
+          </div>
+          <div class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14h6M9 17h4"/></svg></div>
+            <h3>File activity</h3>
+            <p>Know which files other sessions touched recently, before you edit the same one.</p>
+          </div>
+          <div class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 11h7M8.5 14h4"/></svg></div>
+            <h3>Messaging &amp; negotiation</h3>
+            <p>Sessions message each other directly. Contested edits are blocked until the other side responds or a timeout passes.</p>
+          </div>
+          <div class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg></div>
+            <h3>Decisions</h3>
+            <p>Typed, append-only shared decisions with explicit supersede rules. Conflicts are loud, never silently overwritten.</p>
+          </div>
+          <div class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.4 7.2 17l.9-5.4L4.2 7.7l5.4-.8z"/><path d="M8 21h8"/></svg></div>
+            <h3>Task claims</h3>
+            <p>Atomic "I've got this issue" claims, so two agents never pick up the same work.</p>
+          </div>
+          <div class="card">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></div>
+            <h3>Handoffs</h3>
+            <p>Structured context transfers between agents, or to a human, with a suggested next action.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap">
+        <p class="eyebrow">How it works</p>
+        <h2>Agents can't just ignore each other</h2>
+        <p class="sub">A warning alone doesn't stop a collision; a model can read it and edit anyway. Continuity enforces coordination with Claude Code hooks, and every block expires, so a silent session can never stall you.</p>
+        <div class="steps">
+          <div class="step"><h3>See</h3><p>Each session starts with a coordination snapshot and gets a "what changed" update on every prompt.</p></div>
+          <div class="step"><h3>Talk</h3><p>Send a message to another session or broadcast to all. It lands in their context on the next prompt.</p></div>
+          <div class="step"><h3>Negotiate</h3><p>Editing a file another live session just touched is held until you message them and they answer, or the block times out.</p></div>
+          <div class="step"><h3>Answer</h3><p>Messages that need a reply hold your turn until you respond or dismiss them. Decisions can require every session to acknowledge.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="flavors">
+      <div class="wrap">
+        <p class="eyebrow">Two flavors, one codebase</p>
+        <h2>Local by default. Team when you need it.</h2>
+        <p class="sub">With no configuration, Continuity runs entirely on your machine. Point it at your own server to coordinate across machines and teammates.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th></th><th>Local</th><th>Team</th></tr></thead>
+            <tbody>
+              <tr><th>Storage</th><td>SQLite file on your machine</td><td>Postgres (Neon) you deploy</td></tr>
+              <tr><th>Transport</th><td>In-process, nothing leaves the machine</td><td>Your Cloudflare Worker over HTTPS</td></tr>
+              <tr><th>Scope</th><td>One machine, many sessions</td><td>Many machines, many teammates</td></tr>
+              <tr><th>Auth</th><td>None needed</td><td>Per-teammate API key, kept in your keychain</td></tr>
+              <tr><th>Extras</th><td>Coordination core</td><td>Optional GitHub Projects sync, plan check, Slack escalation</td></tr>
+              <tr><th>Setup</th><td>Zero config</td><td>Deploy the Worker and database</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="privacy">
+      <div class="wrap">
+        <div class="callout">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <div>
+            <strong>No telemetry. No hosted service.</strong>
+            <p>Continuity's publisher runs no servers and collects nothing. In local mode your data never leaves your machine; in team mode it goes only to a server you or your team operate. <a href="/project/continuity/privacy/">Read the privacy policy</a>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Continuity is open source under the MIT license.</span>
+      <nav>
+        <a href="https://github.com/uziiuzair/continuity-mcp">GitHub</a>
+        <a href="https://github.com/uziiuzair/continuity-mcp/blob/main/SECURITY.md">Security</a>
+        <a href="/project/continuity/privacy/">Privacy policy</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    document.querySelectorAll("[data-copy]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(b.dataset.copy)
+          b.textContent = "Copied"
+        } catch {
+          b.textContent = "Copy failed"
+        }
+        setTimeout(() => (b.textContent = "Copy"), 1600)
+      })
+    })
+  </script>
+</body>
+</html>
