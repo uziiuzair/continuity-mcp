@@ -7,6 +7,11 @@
   "author": {
     "name": "Uzair Hayat"
   },
+  "homepage": "https://uziiuzair.com/project/continuity/",
+  "repository": "https://github.com/uziiuzair/continuity-mcp",
+  "documentationUrl": "https://github.com/uziiuzair/continuity-mcp#readme",
+  "supportUrl": "https://github.com/uziiuzair/continuity-mcp/issues",
+  "privacyPolicyUrl": "https://uziiuzair.com/project/continuity/privacy/",
   "userConfig": {
     "apiUrl": {
       "type": "string",
