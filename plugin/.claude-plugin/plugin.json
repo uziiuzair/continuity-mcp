@@ -1,6 +1,6 @@
 {
   "name": "continuity",
-  "displayName": "Continuity for Parallel Sessions",
+  "displayName": "Continuity – Agent Collaboration",
   "version": "0.1.0-alpha.6",
   "description": "[Alpha] Shared presence, file-activity awareness, decisions, task claims & handoffs for parallel Claude Code sessions. Works locally (SQLite, zero-config) or against a team server.",
   "icon": ".claude-plugin/icon.png",
