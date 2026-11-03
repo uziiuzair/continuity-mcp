@@ -1,6 +1,14 @@
 name = "continuity-site"
 compatibility_date = "2025-04-01"
 
+# Requires uziiuzair.com to be a zone on the same Cloudflare account (proxied).
+# These routes take precedence over whatever else serves the domain, for these
+# paths only. Keep `routes` above [assets]: TOML would otherwise nest it there.
+routes = [
+  { pattern = "uziiuzair.com/project/continuity", zone_name = "uziiuzair.com" },
+  { pattern = "uziiuzair.com/project/continuity/*", zone_name = "uziiuzair.com" },
+]
+
 # Static site for uziiuzair.com/project/continuity — landing page + privacy
 # policy. No Worker script: Workers Assets serves public/ directly. Files are
 # laid out under public/project/continuity/ so request paths map 1:1 to files.
@@ -8,11 +16,3 @@ compatibility_date = "2025-04-01"
 directory = "./public"
 html_handling = "auto-trailing-slash"
 not_found_handling = "404-page"
-
-# Requires uziiuzair.com to be a zone on the same Cloudflare account (proxied).
-# These routes take precedence over whatever else serves the domain, for these
-# paths only.
-routes = [
-  { pattern = "uziiuzair.com/project/continuity", zone_name = "uziiuzair.com" },
-  { pattern = "uziiuzair.com/project/continuity/*", zone_name = "uziiuzair.com" },
-]
